@@ -1,0 +1,41 @@
+~/.local/lib/python3.10/site-packages/numpy/core/fromnumeric.py:3464: RuntimeWarning: Mean of empty slice.
+  return _methods._mean(a, axis=axis, dtype=dtype,
+~/.local/lib/python3.10/site-packages/numpy/core/_methods.py:192: RuntimeWarning: invalid value encountered in scalar divide
+  ret = ret.dtype.type(ret / rcount)
+frames with CG-D detections: 30
+
+=== Part A: per-observation geometry (non-BG, conf>=0.25) ===
+scans=1 raw(current)  dets=504 usable(>=3pts)=0.65 median_pts=   9.0 median_bleed=0.00 mean_bleed=0.04 dets_bleed>30%=0.02 | centroid_err vs RGB-D: median=0.059m p90=0.191m
+scans=1 erode5px      dets=504 usable(>=3pts)=0.55 median_pts=   4.0 median_bleed=0.00 mean_bleed=0.02 dets_bleed>30%=0.01 | centroid_err vs RGB-D: median=0.048m p90=0.185m
+scans=1 depth_gate    dets=504 usable(>=3pts)=0.66 median_pts=   8.0 median_bleed=0.00 mean_bleed=0.03 dets_bleed>30%=0.02 | centroid_err vs RGB-D: median=0.046m p90=0.196m
+scans=1 erode+gate    dets=504 usable(>=3pts)=0.54 median_pts=   3.5 median_bleed=0.00 mean_bleed=0.01 dets_bleed>30%=0.01 | centroid_err vs RGB-D: median=0.046m p90=0.182m
+scans=1 dbscan        dets=504 usable(>=3pts)=0.52 median_pts=   5.0 median_bleed=0.00 mean_bleed=0.01 dets_bleed>30%=0.00 | centroid_err vs RGB-D: median=0.113m p90=0.406m
+scans=1 rgbd_dense    dets=504 usable(>=3pts)=1.00 median_pts= 420.0 median_bleed=0.00 mean_bleed=0.00 dets_bleed>30%=0.00 | centroid_err vs RGB-D: median=0.046m p90=0.118m
+scans=5 raw(current)  dets=504 usable(>=3pts)=0.71 median_pts=  47.0 median_bleed=0.01 mean_bleed=0.04 dets_bleed>30%=0.00 | centroid_err vs RGB-D: median=0.045m p90=0.186m
+scans=5 erode5px      dets=504 usable(>=3pts)=0.67 median_pts=  22.0 median_bleed=0.00 mean_bleed=0.02 dets_bleed>30%=0.01 | centroid_err vs RGB-D: median=0.039m p90=0.175m
+scans=5 depth_gate    dets=504 usable(>=3pts)=0.71 median_pts=  44.0 median_bleed=0.01 mean_bleed=0.02 dets_bleed>30%=0.01 | centroid_err vs RGB-D: median=0.034m p90=0.185m
+scans=5 erode+gate    dets=504 usable(>=3pts)=0.66 median_pts=  20.0 median_bleed=0.00 mean_bleed=0.01 dets_bleed>30%=0.01 | centroid_err vs RGB-D: median=0.030m p90=0.163m
+scans=5 dbscan        dets=504 usable(>=3pts)=0.69 median_pts=  42.0 median_bleed=0.01 mean_bleed=0.02 dets_bleed>30%=0.00 | centroid_err vs RGB-D: median=0.033m p90=0.169m
+{'armchair': 5, 'cabinet': 56, 'chair': 0, 'couch': 3, 'drawer': 20, 'dresser': 147, 'footrest': 1, 'furniture': 0, 'hassock': 5, 'lamp': 63, 'other item': 7, 'pad': 2, 'pillow': 0, 'side table': 2, 'sink': 1, 'stool': 0, 'table': 0, 'window': 127}
+
+=== Part B: multi-view association ===
+scans=1 rgbd_dense    delta=0.025 thr=1.2 voxel=0 -> {"objects": 24, "multi_view": 21, "single": 3, "max_obs": 136, "purity": 0.813, "dup_pairs": 4, "total_obs": 504, "max_pts": 145562}
+scans=1 rgbd_dense    delta=0.050 thr=1.2 voxel=0.05 -> {"objects": 21, "multi_view": 19, "single": 2, "max_obs": 136, "purity": 0.783, "dup_pairs": 2, "total_obs": 504, "max_pts": 3362}
+scans=1 rgbd_dense    delta=0.100 thr=1.2 voxel=0.05 -> {"objects": 17, "multi_view": 15, "single": 2, "max_obs": 209, "purity": 0.81, "dup_pairs": 0, "total_obs": 504, "max_pts": 3362}
+scans=1 rgbd_dense    delta=0.100 thr=1.4 voxel=0.05 -> {"objects": 20, "multi_view": 18, "single": 2, "max_obs": 149, "purity": 0.775, "dup_pairs": 2, "total_obs": 504, "max_pts": 3362}
+scans=1 rgbd_dense    delta=0.100 thr=1.6 voxel=0.05 -> {"objects": 27, "multi_view": 21, "single": 6, "max_obs": 136, "purity": 0.822, "dup_pairs": 4, "total_obs": 504, "max_pts": 3362}
+scans=1 raw(current)  delta=0.025 thr=1.2 voxel=0 -> {"objects": 100, "multi_view": 40, "single": 60, "max_obs": 24, "purity": 0.912, "dup_pairs": 497, "total_obs": 329, "max_pts": 4909}
+scans=1 raw(current)  delta=0.050 thr=1.2 voxel=0.05 -> {"objects": 25, "multi_view": 16, "single": 9, "max_obs": 111, "purity": 0.861, "dup_pairs": 4, "total_obs": 329, "max_pts": 1993}
+scans=1 raw(current)  delta=0.100 thr=1.2 voxel=0.05 -> {"objects": 18, "multi_view": 14, "single": 4, "max_obs": 113, "purity": 0.829, "dup_pairs": 1, "total_obs": 329, "max_pts": 1993}
+scans=1 raw(current)  delta=0.100 thr=1.4 voxel=0.05 -> {"objects": 22, "multi_view": 14, "single": 8, "max_obs": 113, "purity": 0.861, "dup_pairs": 4, "total_obs": 329, "max_pts": 1993}
+scans=1 raw(current)  delta=0.100 thr=1.6 voxel=0.05 -> {"objects": 26, "multi_view": 17, "single": 9, "max_obs": 113, "purity": 0.865, "dup_pairs": 9, "total_obs": 329, "max_pts": 1990}
+scans=5 raw(current)  delta=0.025 thr=1.2 voxel=0 -> {"objects": 25, "multi_view": 19, "single": 6, "max_obs": 111, "purity": 0.831, "dup_pairs": 3, "total_obs": 360, "max_pts": 36998}
+scans=5 raw(current)  delta=0.050 thr=1.2 voxel=0.05 -> {"objects": 21, "multi_view": 17, "single": 4, "max_obs": 111, "purity": 0.823, "dup_pairs": 2, "total_obs": 360, "max_pts": 2820}
+scans=5 raw(current)  delta=0.100 thr=1.2 voxel=0.05 -> {"objects": 15, "multi_view": 12, "single": 3, "max_obs": 181, "purity": 0.829, "dup_pairs": 0, "total_obs": 360, "max_pts": 2820}
+scans=5 raw(current)  delta=0.100 thr=1.4 voxel=0.05 -> {"objects": 21, "multi_view": 17, "single": 4, "max_obs": 139, "purity": 0.818, "dup_pairs": 2, "total_obs": 360, "max_pts": 2820}
+scans=5 raw(current)  delta=0.100 thr=1.6 voxel=0.05 -> {"objects": 26, "multi_view": 20, "single": 6, "max_obs": 110, "purity": 0.837, "dup_pairs": 3, "total_obs": 360, "max_pts": 2815}
+scans=5 erode+gate    delta=0.025 thr=1.2 voxel=0 -> {"objects": 25, "multi_view": 17, "single": 8, "max_obs": 110, "purity": 0.851, "dup_pairs": 4, "total_obs": 335, "max_pts": 34424}
+scans=5 erode+gate    delta=0.050 thr=1.2 voxel=0.05 -> {"objects": 20, "multi_view": 15, "single": 5, "max_obs": 110, "purity": 0.817, "dup_pairs": 2, "total_obs": 335, "max_pts": 2733}
+scans=5 erode+gate    delta=0.100 thr=1.2 voxel=0.05 -> {"objects": 19, "multi_view": 15, "single": 4, "max_obs": 110, "purity": 0.808, "dup_pairs": 2, "total_obs": 335, "max_pts": 2733}
+scans=5 erode+gate    delta=0.100 thr=1.4 voxel=0.05 -> {"objects": 21, "multi_view": 15, "single": 6, "max_obs": 110, "purity": 0.826, "dup_pairs": 3, "total_obs": 335, "max_pts": 2733}
+scans=5 erode+gate    delta=0.100 thr=1.6 voxel=0.05 -> {"objects": 25, "multi_view": 17, "single": 8, "max_obs": 110, "purity": 0.84, "dup_pairs": 7, "total_obs": 335, "max_pts": 2724}

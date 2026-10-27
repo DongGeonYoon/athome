@@ -1,0 +1,120 @@
+geometry_fusion_node:
+  ros__parameters:
+    # Current project topics / frames
+    lidar_topic: /livox/lidar
+    camera_info_topic: /camera/camera/color/camera_info
+    semantic_topic: /cg_d/objects_2d
+    observation_topic: /athome/perception/objects   # online O_k for Target Matching, athome_interfaces/ObservedObjectArray
+    static_map_topic: /semantic_geometry/static_map
+    map_frame: map
+    dynamic_label: person
+
+    # Proposal: t_L* = argmin |t_C - t_L| and accept only within a threshold.
+    # The proposal does not fix this numeric value; pass it at runtime after sync validation.
+    # max_sync_dt_sec: <SET_ME>
+
+    # ConceptGraphs uses 2.5 cm for dense RGB-D. With Mid-360 sparsity 2.5 cm fragments objects
+    # (Replica feasibility: 100 objects / 497 duplicate pairs); 5 cm matches the RGB-D baseline.
+    nn_distance_threshold: 0.05
+
+    # Map-object point cloud voxel downsampling after fusion (proposal). 0 disables.
+    voxel_size: 0.05
+
+    # Merge LiDAR scans within +-window/2 of the camera stamp (each compensated with its own TF).
+    # 0 = nearest scan only. 0.5 s (~5 Mid-360 scans) gave the best geometry in the feasibility study.
+    accumulation_window_sec: 0.5
+
+    # Camera-depth gate on mask points: keep median +- max(k * MAD, min_band), then obs_cluster_eps DBSCAN.
+    depth_gate_k_mad: 2.5
+    depth_gate_min_band: 0.05
+
+    # Optional mask boundary erosion [px]. Lowers centroid error slightly but drops coverage.
+    mask_erosion_px: 0
+
+    # Over-merge fixes (scene_graph_dataset v0.3, chosen on Replica room0). 0 disables each.
+    dedup_mask_iou: 0.8        # same-frame masks with IoU >= this: keep the higher-confidence one
+    obs_cluster_eps: 0.15      # per-observation DBSCAN, largest cluster (proposal 2-3); needs scan accumulation
+    denoise_eps: 0.20          # export: keep the largest eps-connected component per object
+    # Stray points before every bbox (per observation and at export, require3 problem 1): statistical outlier
+    # removal (k nearest, mean + std_ratio * std) limited to points farther than min_gap from any other point;
+    # clouds under min_points are left as they are. outlier_k 0 disables.
+    outlier_k: 8
+    outlier_std_ratio: 2.0
+    outlier_min_gap: 0.08
+    outlier_min_points: 20
+    frame_one_to_one: false    # off: fragmented objects (82 -> 146) on room0
+    growth_ratio: 0.0          # off: no effect on room0; >0 rejects merges growing the bbox diagonal
+    growth_margin: 0.3
+
+    # Aligned D435i depth used only when < 3 LiDAR points survive (table-top items above the Mid-360).
+    # "" = LiDAR only. Real robot: /camera/camera/aligned_depth_to_color/image_raw (needs align_depth.enable).
+    depth_topic: "/camera/camera/aligned_depth_to_color/image_raw"
+    depth_fallback_stride: 4
+
+    # LiDAR / depth / TF history [s]. CG-D results arrive seconds after the image; detections wait until the
+    # scans of their accumulation window have arrived instead of being dropped.
+    sensor_buffer_sec: 30.0
+
+    # Export label check: a small-object label (remote control, cup, ...) on a bbox larger than
+    # SIZE_PRIOR_MAX * slack is replaced by the next plausible voted label (else 'other item'). 0 disables.
+    size_prior_slack: 1.5
+
+    # Export re-merge of one physical object fusion kept as two (other side / thin slice / synonym label): CLIP cosine
+    # >= this AND shared space (30 % of points within 10 cm, box centre inside the other box, or centres <= 0.2 m).
+    # 0.9: GT sweep (ProcTHOR 20 + Replica full 10) keeps recall (0.376 -> 0.370), real run2 splits 22 -> 13,
+    # no over-merge; 0.85 / 0.8 start merging neighbours. 0 disables.
+    merge_fragments_cos: 0.9
+
+    # Search targets (online target confirmation). A target label seen once wins the object label vote;
+    # target detections need confidence >= target_min_confidence (VLFM uses 0.4 for its goal query).
+    search_targets_topic: /athome/search/targets
+    target_min_confidence: 0.4
+
+    # athome_interfaces/ObservedObjectArray fields. clip_model: the CLIP the map (objects.json) was built with.
+    # prior_objects_json: pre-mapped objects.json; an observation associating with one of its objects
+    # (phi_sem + phi_geo >= association_threshold) carries that object_id, new objects and persons -1.
+    # P_j comes from points/obj_<id>.npy next to the JSON when present, else the bbox filled at voxel_size.
+    # is_static is false only for dynamic_label (person). "" = every object_id -1.
+    clip_model: ViT-H-14/laion2b_s32b_b79k
+    prior_objects_json: ""
+
+    # Scene Graph JSON export (empty path disables). The Scene Graph is built OFFLINE from the pre-mapping run,
+    # so only the final file matters: rewritten every export period (rebuild ~0.7 s / 300 objects), on
+    # `ros2 service call /geometry_fusion_node/save_scene_graph std_srvs/srv/Trigger` and on shutdown.
+    scene_graph_json_path: ""
+    scene_graph_export_period_sec: 10.0     # 0 = after every frame (old behaviour)
+    static_map_publish_period_sec: 2.0      # /semantic_geometry/static_map (all points), 0 = every frame
+    scene_graph_min_observations: 2
+    scene_graph_excluded_tags: ["other item", "furniture", "pad", "object", "item", "thing",
+                                "tile wall", "tile", "wall", "floor", "ceiling", "pillar", "pole",
+                                "lamp post", "balustrade", "tile floor", "wood floor"]
+
+    # phi_sem + phi_geo with the proposal's phi_sem = (cos+1)/2. 1.2 was the CG-D README value (raw cosine);
+    # re-validated in proposal mode on 30 GT scenes (ProcTHOR 20 + Replica full 10, exp1/assoc_sweep):
+    #   thr  semantic recall  same-tag duplicates  objects covering >=2 GT
+    #   1.0  0.387 / 0.300      7 / 13               4.85 / 20.6
+    #   1.1  0.376 / 0.305      9 / 15               4.70 / 20.4   <- chosen
+    #   1.2  0.364 / 0.300     11 / 16               4.10 / 21.1
+    #   1.4  0.338 / 0.271     23 / 29               4.05 / 19.5
+    # <= 1.0 also disables the bbox-distance pre-filter (phi_geo = 0 can no longer be ruled out).
+    association_threshold: 1.1
+
+    # Current calibrated LiDAR -> camera transform, row-major 4x4.
+    T_cam_lidar: [
+      -0.0019986, -0.9999089, -0.0133510, 0.0327582,
+       0.0034152,  0.0133441, -0.9999051, 0.3241458,
+       0.9999922, -0.0020440,  0.0033882, 0.0183492,
+       0.0,        0.0,        0.0,       1.0
+    ]
+
+gsa_pkl_bridge:
+  ros__parameters:
+    gsa_dir: ""
+    camera_frame: camera_color_optical_frame
+    timestamp_csv: ""
+    publish_rate_hz: 1.0
+
+    # Official ConceptGraphs-Detect mapping README values
+    mask_conf_threshold: 0.25
+    max_bbox_area_ratio: 0.5
+    skip_bg: false

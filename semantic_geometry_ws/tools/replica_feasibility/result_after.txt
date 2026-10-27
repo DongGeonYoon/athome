@@ -1,0 +1,24 @@
+frames with CG-D detections: 30
+
+=== Part A: per-detection geometry (non-BG, conf>=0.25) ===
+scans=1 raw         dets=504 usable=0.65 median_pts=   9.0 mean_bleed=0.04 | centroid_err median=0.059m p90=0.191m
+scans=1 erode5px    dets=504 usable=0.55 median_pts=   4.0 mean_bleed=0.03 | centroid_err median=0.048m p90=0.185m
+scans=1 depth_gate  dets=504 usable=0.66 median_pts=   8.0 mean_bleed=0.03 | centroid_err median=0.046m p90=0.196m
+scans=1 erode+gate  dets=504 usable=0.54 median_pts=   3.0 mean_bleed=0.01 | centroid_err median=0.046m p90=0.186m
+scans=1 dbscan      dets=504 usable=0.52 median_pts=   5.0 mean_bleed=0.01 | centroid_err median=0.113m p90=0.406m
+scans=1 rgbd_dense  dets=504 usable=1.00 median_pts= 420.0 mean_bleed=0.00 | centroid_err median=0.046m p90=0.118m
+scans=5 raw         dets=504 usable=0.71 median_pts=  47.0 mean_bleed=0.04 | centroid_err median=0.045m p90=0.186m
+scans=5 erode5px    dets=504 usable=0.67 median_pts=  21.5 mean_bleed=0.02 | centroid_err median=0.039m p90=0.176m
+scans=5 depth_gate  dets=504 usable=0.71 median_pts=  44.0 mean_bleed=0.02 | centroid_err median=0.034m p90=0.185m
+scans=5 erode+gate  dets=504 usable=0.66 median_pts=  20.0 mean_bleed=0.02 | centroid_err median=0.030m p90=0.164m
+scans=5 dbscan      dets=504 usable=0.69 median_pts=  42.0 mean_bleed=0.02 | centroid_err median=0.033m p90=0.169m
+per-label median pts (1, 'raw'): {'armchair': 6, 'cabinet': 54, 'chair': 0, 'couch': 1, 'drawer': 19, 'dresser': 142, 'footrest': 0, 'furniture': 0, 'hassock': 8, 'lamp': 58, 'other item': 7, 'pad': 1, 'pillow': 0, 'side table': 4, 'sink': 2, 'stool': 0, 'table': 0, 'window': 128}
+per-label median pts (5, 'depth_gate'): {'armchair': 27, 'cabinet': 284, 'chair': 0, 'couch': 4, 'drawer': 108, 'dresser': 689, 'footrest': 2, 'furniture': 0, 'hassock': 23, 'lamp': 298, 'other item': 25, 'pad': 9, 'pillow': 0, 'side table': 23, 'sink': 19, 'stool': 0, 'table': 0, 'window': 630}
+
+=== Part B: multi-view association ===
+RGB-D baseline (CG-style)                            -> {"objects": 24, "multi_view": 21, "single": 3, "max_obs": 136, "purity": 0.813, "dup_pairs": 4, "total_obs": 504, "max_pts": 145562}
+OLD defaults: 1 scan, raw, d=2.5cm, no voxel         -> {"objects": 100, "multi_view": 40, "single": 60, "max_obs": 24, "purity": 0.912, "dup_pairs": 497, "total_obs": 329, "max_pts": 4909}
+NEW defaults: 5 scans, depth_gate, d=5cm, voxel 5cm  -> {"objects": 20, "multi_view": 16, "single": 4, "max_obs": 124, "purity": 0.817, "dup_pairs": 2, "total_obs": 360, "max_pts": 2746}
+NEW but 1 scan (no accumulation)                     -> {"objects": 27, "multi_view": 19, "single": 8, "max_obs": 110, "purity": 0.844, "dup_pairs": 5, "total_obs": 335, "max_pts": 2032}
+NEW + erode5px                                       -> {"objects": 20, "multi_view": 15, "single": 5, "max_obs": 110, "purity": 0.817, "dup_pairs": 2, "total_obs": 334, "max_pts": 2690}
+NEW, thr=1.4                                         -> {"objects": 26, "multi_view": 19, "single": 7, "max_obs": 111, "purity": 0.85, "dup_pairs": 5, "total_obs": 360, "max_pts": 2737}

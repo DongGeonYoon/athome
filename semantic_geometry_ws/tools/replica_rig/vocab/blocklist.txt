@@ -1,0 +1,33 @@
+# RAM tags dropped before GroundingDINO: scenery / content of pictures / abstract words / people.
+landscape
+cliff
+mountain
+sky
+tree
+beach
+sea
+ocean
+water
+cloud
+sun
+sunset
+snow
+city
+building
+tower
+eiffel tower
+road
+art
+artwork
+lead to
+skateboarder
+person
+man
+woman
+boy
+girl
+child
+wood wall
+white
+black
+light

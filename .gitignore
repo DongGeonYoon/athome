@@ -1,0 +1,31 @@
+# athome (public) - code only; data, weights and results stay on the GPU server (/data/athome)
+__pycache__/
+*.pyc
+.vscode/
+build/
+install/
+log/
+# data / weights / results (large, not public)
+*.pth
+*.pt
+*.bin
+*.safetensors
+*.db3
+*.mcap
+*.ply
+*.npz
+*.npy
+*.pkl.gz
+*.zip
+*.tar.gz*
+results/
+datasets/
+# server-specific (address, keys, logs)
+push*.sh
+push*.log
+fixup_links.sh
+README_server.md
+*.pub
+
+# message package of the search server team (not ours, see README "athome_interfaces")
+semantic_geometry_ws/src/athome_interfaces/

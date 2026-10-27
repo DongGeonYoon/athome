@@ -1,0 +1,48 @@
+# Generic household object vocabulary appended to RAM tags (written from common indoor categories,
+# not from any simulator's class list). One phrase per line.
+chair
+sofa
+bed
+table
+desk
+cabinet
+shelf
+nightstand
+television
+lamp
+picture frame
+mirror
+plant
+pillow
+blanket
+rug
+refrigerator
+microwave
+oven
+sink
+toilet
+bathtub
+towel
+trash can
+box
+basket
+book
+cup
+mug
+bowl
+plate
+bottle
+remote control
+cell phone
+laptop
+keys
+pen
+clock
+candle
+vase
+toy
+backpack
+shoe
+kettle
+pot
+apple

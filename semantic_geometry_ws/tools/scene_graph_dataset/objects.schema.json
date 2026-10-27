@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Perception -> Scene Graph Object-Centric Feature (objects.json)",
+  "type": "object",
+  "required": ["frame_id", "objects"],
+  "additionalProperties": false,
+  "properties": {
+    "frame_id": {"const": "map"},
+    "objects": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["object_id", "semantic_tag", "confidence", "centroid", "bbox_3d", "clip_feature", "num_observations"],
+        "properties": {
+          "object_id": {"type": "integer", "minimum": 0, "description": "ID_j, unique within the scene"},
+          "semantic_tag": {"type": "string", "minLength": 1, "description": "l_j, open-vocabulary label (majority vote)"},
+          "confidence": {"type": "number", "minimum": 0, "maximum": 1, "description": "mean CG-D detection confidence"},
+          "centroid": {
+            "type": "object", "additionalProperties": false, "required": ["x", "y", "z"],
+            "description": "mu_j, mean of fused map-frame points [m]",
+            "properties": {"x": {"type": "number"}, "y": {"type": "number"}, "z": {"type": "number"}}
+          },
+          "bbox_3d": {
+            "type": "object", "additionalProperties": false, "required": ["center", "size", "yaw"],
+            "description": "B_j^3D: BEV principal-axis oriented box",
+            "properties": {
+              "center": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3, "description": "[x, y, z] box center [m]"},
+              "size": {"type": "array", "items": {"type": "number", "minimum": 0}, "minItems": 3, "maxItems": 3, "description": "[length (along yaw), width, height] [m]"},
+              "yaw": {"type": "number", "minimum": -3.1416, "maximum": 3.1416, "description": "[rad], principal axis (pi-ambiguous)"}
+            }
+          },
+          "clip_feature": {"type": "array", "items": {"type": "number"}, "minItems": 1024, "maxItems": 1024, "description": "f_j^map, L2-normalised fused CLIP image feature"},
+          "num_observations": {"type": "integer", "minimum": 1, "description": "n_j, fused detections"}
+        }
+      }
+    }
+  }
+}

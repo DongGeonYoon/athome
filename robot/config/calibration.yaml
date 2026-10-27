@@ -1,0 +1,46 @@
+# Sensor parameters used in the real-robot experiment (all values checked on 2026-10-11).
+camera:
+  model: Intel RealSense D435 (serial <MASKED>, firmware 5.17.3.10)   # D435, no IMU
+  usb: "2.1 (480M)"   # 1280x720 colour works over USB 2.0 via V4L2 at 6/10/15 fps (librealsense: no frames)
+  color_640x480:          # factory intrinsics (rs-enumerate-devices -c) == direct_calib_ws calib.json K
+    fx: 602.312561035156
+    fy: 602.256469726562
+    cx: 329.529296875
+    cy: 240.36149597168
+    distortion: [0, 0, 0, 0, 0]
+  color_1280x720:         # factory intrinsics (rs-enumerate-devices -c, 2026-10-11). Used for detection (require2: option A)
+    fx: 903.468872070312  # horizontal FOV = 2*atan(1280 / (2*fx)) = 70.6 deg, vertical 43.5 deg
+    fy: 903.384704589844
+    cx: 654.2939453125
+    cy: 360.542236328125
+    distortion: [0, 0, 0, 0, 0]
+  depth_640x480:          # factory intrinsics, Z16 in mm (depth scale 0.001)
+    fx: 384.861999511719
+    fy: 384.861999511719
+    cx: 325.280639648438
+    cy: 238.322784423828
+  T_color_depth:          # factory extrinsic depth -> color (librealsense prints the rotation column-major)
+    rotation_printed: [[0.999758, 0.0219438, 0.00178126], [-0.0219439, 0.999759, 2.6609e-05], [-0.00178025, -6.56903e-05, 0.999998]]
+    translation_m: [0.0147887244820595, -0.000198517154785804, 0.000570302887354046]
+lidar:
+  model: Livox Mid-360, ip 192.168.1.<lidar> (host 192.168.1.<host>), livox_ros_driver2 MID360s_config.json
+  fast_lio_extrinsic_T_body_lidar: [-0.011, -0.02329, 0.04412]   # mid360.yaml, R = I
+extrinsics:
+  T_cam_lidar: [[-0.0019986, -0.9999089, -0.0133510, 0.0327582],   # calib.json (direct_visual_lidar_calibration)
+                [ 0.0034152,  0.0133441, -0.9999051, 0.3241458],
+                [ 0.9999922, -0.0020440,  0.0033882, 0.0183492],
+                [ 0, 0, 0, 1]]
+  T_cam_body:  [[-0.0019986, -0.9999089, -0.0133510, 0.0100374],   # = T_cam_lidar * inv(T_body_lidar), used by the node
+                [ 0.0034152,  0.0133441, -0.9999051, 0.3686100],
+                [ 0.9999922, -0.0020440,  0.0033882, 0.0291520],
+                [ 0, 0, 0, 1]]
+  T_body_base_link: [-0.321, -0.023, -0.401]                       # mppi_nav static TF (base_link = base centre on floor)
+map:
+  frame: map                     # = FAST_LIO_LOCALIZATION2 map frame = lab map PCD frame (FAST-LIO camera_init of the mapping run)
+  origin: IMU (FAST-LIO body) pose at the start of the mapping run; z axis = that IMU's z (not re-levelled)
+  floor_z_m: -0.41               # RANSAC on lab_map_20261005_174210.pcd, floor band: z at origin -0.419, inlier median -0.408
+  floor_tilt_deg: 0.17           # over the 11 x 9 m map: < 3 cm height change
+  floor_check_tf: "localized map->base_link z = -0.383 at (0.26, 0.81) on 2026-10-11 (base_link origin on the floor): within 3 cm of the RANSAC floor"
+fusion:
+  association_threshold: 1.1
+  max_sync_dt_sec: null   # measured in the experiment (scripts/check_sync.py), written to README

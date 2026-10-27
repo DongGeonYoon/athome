@@ -1,0 +1,16 @@
+# Real Tidybot overlay, loaded after fusion_params.yaml by launch/perception.launch.py.
+# Input is the FAST-LIO body cloud (same as the costmap), so the extrinsic is T_cam_body, not T_cam_lidar:
+#   T_cam_body = T_cam_lidar (calib.json) * inv(T_body_lidar), T_body_lidar = FAST-LIO mid360 extrinsic_T
+#   [-0.011, -0.02329, 0.04412], R = I. Validated end-to-end on the Gazebo replay (same chain).
+# max_sync_dt_sec has no default on purpose: pass the value measured on the robot to the launch file.
+geometry_fusion_node:
+  ros__parameters:
+    lidar_topic: /cloud_registered_body
+    camera_info_topic: /camera/camera/color/camera_info
+    depth_topic: /camera/camera/aligned_depth_to_color/image_raw    # needs align_depth.enable:=true, "" = LiDAR only
+    T_cam_lidar: [
+      -0.0019986, -0.9999089, -0.0133510, 0.0100374,
+       0.0034152,  0.0133441, -0.9999051, 0.3686100,
+       0.9999922, -0.0020440,  0.0033882, 0.0291520,
+       0.0,        0.0,        0.0,       1.0
+    ]
