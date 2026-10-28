@@ -283,6 +283,40 @@ def denoise_object(obj: MapObject, eps: float, min_points: int = 3, outliers: Op
     return out
 
 
+SUPPORT_TAGS = ('desk', 'table', 'counter', 'nightstand', 'dresser', 'cabinet', 'shelf', 'stand')
+
+
+def trim_below_support(objects: List[MapObject], max_dist: float = 0.25, margin: float = 0.025,
+                       max_size: float = 0.6, top_pct: float = 95.0) -> List[MapObject]:
+    """
+    Export-time cleanup of small objects resting on furniture (tabletop segmentation idea: keep only points above the
+    support surface). Mask edges pull in points of the furniture front edge below the object (run4: cup / remote
+    boxes reached 7-10 cm below the desk top), so the box no longer "sits on" the desk. For an object up to max_size
+    whose points come within max_dist (XY) of a furniture point cloud and lie mostly above that furniture's surface
+    height (top_pct percentile of its z), points more than margin below the surface are dropped and the box is
+    recomputed. The robot LiDAR is below desk height, so the desk top right under a small object is often not scanned:
+    the surface height of the nearby furniture is used, not the points straight under the object.
+    """
+    from copy import deepcopy
+    from scipy.spatial import cKDTree
+    sup = [(o, float(np.percentile(np.asarray(o.points_map)[:, 2], top_pct)), cKDTree(np.asarray(o.points_map)[:, :2]))
+           for o in objects if set(o.label.split()) & set(SUPPORT_TAGS) and len(o.points_map) >= 10]   # word match: not 'desktop'
+    out = []
+    for o in objects:
+        pts = np.asarray(o.points_map, dtype=np.float64)
+        if any(o is s for s, _, _ in sup) or len(pts) < 3 or float(np.max(o.size)) > max_size:
+            out.append(o); continue
+        tops = [top for s, top, tree in sup
+                if tree.query(pts[:, :2], distance_upper_bound=max_dist)[0].min() <= max_dist
+                and np.median(pts[:, 2]) >= top - margin and pts[:, 2].min() < top - margin]
+        keep = pts[pts[:, 2] >= max(tops) - margin] if tops else pts
+        if tops and 3 <= len(keep) < len(pts):
+            g = compute_geometry(keep); o = deepcopy(o)
+            o.points_map, o.centroid, o.size, o.yaw, o.bbox_center = keep, g.centroid, g.size, g.yaw, g.bbox_center
+        out.append(o)
+    return out
+
+
 # Upper bound of the largest bbox extent [m] for hand-sized / small categories. GroundingDINO sometimes
 # grounds a small-object phrase on a large surface (e.g. a door labelled "remote control"); such a label
 # cannot describe the fused geometry. Categories not listed are unconstrained.

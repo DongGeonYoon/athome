@@ -29,3 +29,6 @@ README_server.md
 
 # message package of the search server team (not ours, see README "athome_interfaces")
 semantic_geometry_ws/src/athome_interfaces/
+
+# GPU server address / key (local only; template robot/config/gpu_server.env.example)
+robot/config/gpu_server.env

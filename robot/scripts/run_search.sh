@@ -7,7 +7,8 @@
 # (athome_interfaces/ObservedObjectArray); the laptop runs Nav2 (costmap, map_server off) and the search server, and
 # publishes /athome/search/targets. Same ROS_DOMAIN_ID / RMW on both sides (env.sh).
 # 1 localization + camera, unless already running   2 wait for a pose (RViz "2D Pose Estimate")
-# 3 timing check -> max_sync_dt_sec   4 live CG-D + geometry_fusion_node (online)   5 wait for the first observation
+# 3 timing check -> max_sync_dt_sec   4 live CG-D (GPU server by default, CGD=local) + geometry_fusion_node (online)
+# 5 wait for the first observation
 # Stop with: bash ~/real/scripts/stop_experiment.sh
 set -e
 PRIOR=$(realpath "${1:?usage: run_search.sh PRIOR_OBJECTS_JSON [NAME]}")
@@ -28,7 +29,16 @@ python3 $S/check_sync.py 10 $R/sync.json | tee $R/logs/sync.txt
 DT=$(python3 -c "import json;print(json.load(open('$R/sync.json')).get('recommended_max_sync_dt_sec', 0.1))")
 echo "[search] max_sync_dt_sec = $DT, prior map = $PRIOR"
 cp $HOME/real/config/calibration.yaml $PRIOR $R/
-setsid bash $S/run_cgd_live.sh --image-topic /camera/camera/color/image_raw --save-dir $R > $R/logs/cgd_live.log 2>&1 < /dev/null &
+# CG-D: on the GPU server by default (CGD=server: tunnel kept open by cgd_server_link.sh, this PC only relays images),
+# CGD=local runs it on this PC's GPU
+if [ "${CGD:-server}" = server ]; then
+  setsid bash $S/cgd_server_link.sh > $R/logs/cgd_server_link.log 2>&1 < /dev/null &
+  until grep -q "cgd_server ready" $R/logs/cgd_server_link.log 2>/dev/null; do sleep 2; done
+  setsid python3 $HOME/semantic_geometry_ws/tools/robot_live/cgd_live_node.py --server 127.0.0.1:47000 \
+    --image-topic /camera/camera/color/image_raw --save-dir $R > $R/logs/cgd_live.log 2>&1 < /dev/null &
+else
+  setsid bash $S/run_cgd_live.sh --image-topic /camera/camera/color/image_raw --save-dir $R > $R/logs/cgd_live.log 2>&1 < /dev/null &
+fi
 setsid ros2 launch semantic_geometry_fusion perception.launch.py mode:=online max_sync_dt_sec:=$DT \
   prior_objects_json:=$PRIOR > $R/logs/fusion.log 2>&1 < /dev/null &
 setsid ros2 bag record -o $R/bag /tf /tf_static /Odometry /camera/camera/color/camera_info \

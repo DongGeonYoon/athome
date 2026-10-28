@@ -35,9 +35,10 @@ from render_rig import load_scene, CAM_HEIGHT
 from render_active_obs import free_cells
 from semantic_geometry_fusion.geometry import (points_inside_mask, transform_points, compute_geometry, depth_gate,
                                                voxel_downsample, largest_cluster, depth_points_in_mask,
-                                               remove_outliers)
+                                               remove_outliers, erode_mask)
 from semantic_geometry_fusion.feature_fusion import (Observation3D, ObjectFeatureMap, dedup_detections,
-                                                     denoise_object, apply_size_prior, merge_fragments)
+                                                     denoise_object, apply_size_prior, merge_fragments,
+                                                     trim_below_support)
 from semantic_geometry_fusion.scene_graph_export import scene_graph_features
 
 COND = 'fastlio_body'
@@ -49,7 +50,15 @@ FUSION = dict(obs_cluster_eps=0.15, dedup_iou=0.8, frame_one_to_one=False, growt
               denoise_eps=0.20, depth_fallback=True, size_prior_slack=1.5,
               merge_fragments_cos=0.9,   # export re-merge, study: exp1/merge_sweep + real run2
               # stray points before every bbox (require3 problem 1, run4 desk top 0.44 -> 0.33 m); None disables
-              outliers=dict(k=8, std_ratio=2.0, min_gap=0.08, min_points=20))
+              outliers=dict(k=8, std_ratio=2.0, min_gap=0.08, min_points=20),
+              # small objects on furniture: drop points below the support surface (search-server check, 2026-10-28).
+              # Off: no effect on run4 (LiDAR below the desk never sees the surface under small objects); mask erosion
+              # did the job there. --support-trim turns it on.
+              support_trim=None,
+              # 2D mask edge erosion [px] before LiDAR points, per source. Real robot only (require4 2): run4 small
+              # objects on desks 1/6 -> 5/6 "on" the desk; simulation (perfect camera-LiDAR alignment) got worse
+              # (ProcTHOR objects -8 %). To be re-checked once camera depth is recorded.
+              mask_erosion_px=dict(robot=3))
 FILTER = dict(min_observations=2, excluded_tags=['other item', 'furniture', 'pad', 'object', 'item', 'thing',
                                                 # building parts RAM tags on walls / floors (ProcTHOR study)
                                                 'tile wall', 'tile', 'wall', 'floor', 'ceiling', 'pillar', 'pole',
@@ -92,7 +101,7 @@ def load_depth(scene_dir, idx):
     return d / 6553.5 if d is not None and d.max() > 0 else None
 
 
-def frame_observations(scene_dir, gsa_dir, dedup, obs_cluster_eps=None):
+def frame_observations(scene_dir, gsa_dir, dedup, obs_cluster_eps=None, erosion=0):
     """Per keyframe list of Observation3D. Geometry = LiDAR points (FAST-LIO body cloud or its emulation) in the
     mask; when fewer than 3 survive and FUSION['depth_fallback'], camera depth in the mask is used instead."""
     P = np.loadtxt(os.path.join(scene_dir, 'traj.txt')).reshape(-1, 4, 4)
@@ -117,7 +126,8 @@ def frame_observations(scene_dir, gsa_dir, dedup, obs_cluster_eps=None):
             n_dup += len(cand) - len(keep)
         obs, depth = [], False      # depth image loaded only when a fallback is needed
         for i in keep:
-            sel = depth_gate(points_inside_mask(pts_s, g['mask'][i], T_cs, K), T_cs, **R.GATE)
+            sel = depth_gate(points_inside_mask(pts_s, erode_mask(g['mask'][i], erosion), T_cs, K),
+                             T_cs, **R.GATE)
             if obs_cluster_eps:
                 sel = largest_cluster(sel, obs_cluster_eps)
             if len(sel) < 3 and FUSION['depth_fallback']:
@@ -155,6 +165,8 @@ def fuse(frames, one_to_one, growth_ratio, denoise_eps):
         objs = [denoise_object(o, denoise_eps, outliers=FUSION['outliers']) for o in objs]
     if FUSION['merge_fragments_cos']:          # after denoise: a merged front + back of one object may be disconnected
         objs = merge_fragments(objs, R.VOXEL, min_cos=FUSION['merge_fragments_cos'])
+    if FUSION['support_trim']:
+        objs = trim_below_support(objs, **FUSION['support_trim'])
     if FUSION['size_prior_slack']:
         objs = [apply_size_prior(o, slack=FUSION['size_prior_slack']) for o in objs]
     return objs
@@ -244,6 +256,8 @@ def load_nav2_map(yaml_path):
     sha = lambda f: hashlib.sha256(open(f, 'rb').read()).hexdigest()
     info = dict(source='nav2_map_server', yaml=os.path.basename(yaml_path), image=os.path.basename(img_path),
                 sha256={os.path.basename(yaml_path): sha(yaml_path), os.path.basename(img_path): sha(img_path)},
+                # search server's map check: "sha256:" + first 16 hex of sha256(yaml bytes + image bytes)
+                map_version='sha256:' + hashlib.sha256(open(yaml_path, 'rb').read() + open(img_path, 'rb').read()).hexdigest()[:16],
                 origin=[float(v) for v in m['origin']], size=[int(img.shape[1]), int(img.shape[0])],
                 note='same file as the robot map_server /map (copied unchanged next to map.yaml); '
                      'unobserved cells are unknown')
@@ -380,7 +394,8 @@ def build_scene(args, source, scene_dir, sid):
     if source == 'replica':
         R.set_scene(os.path.basename(sd_in)[:-4])
 
-    frames, n_det, n_dup = frame_observations(sd_in, gd, dedup=True, obs_cluster_eps=FUSION['obs_cluster_eps'])
+    frames, n_det, n_dup = frame_observations(sd_in, gd, dedup=True, obs_cluster_eps=FUSION['obs_cluster_eps'],
+                                              erosion=FUSION['mask_erosion_px'].get(source, 0))
     objs = fuse(frames, FUSION['frame_one_to_one'], FUSION['growth_ratio'], FUSION['denoise_eps'])
     exported = [o for o in objs if keep_for_scene_graph(o)]
     sg_all = scene_graph_features(objs, 'map'); check_format(sg_all)
@@ -488,6 +503,8 @@ def main():
     ap.add_argument('--growth-ratio', type=float, default=None, help='association growth gate (0 = off)')
     ap.add_argument('--det-suffix', default=None, help='override the CG-D detection suffix of every source')
     ap.add_argument('--no-outliers', action='store_true', help='skip stray-point removal (before require3, for comparison)')
+    ap.add_argument('--support-trim', action='store_true', help='trim small objects below furniture surfaces (off by default)')
+    ap.add_argument('--mask-erosion', type=int, default=None, help='2D mask edge erosion [px] before LiDAR points')
     ap.add_argument('--out-name', default='scene_graph_dataset', help='output folder under --exp')
     ap.add_argument('--occupancy-map', default=None, metavar='YAML',
                     help='robot scenes: use this Nav2 map_server map (the /map the robot navigates on) as occupancy/')
@@ -499,6 +516,10 @@ def main():
         FUSION['merge_fragments_cos'] = args.merge_cos
     if args.no_outliers:
         FUSION['outliers'] = None
+    if args.support_trim:
+        FUSION['support_trim'] = dict(max_dist=0.25, margin=0.025, max_size=0.6)
+    if args.mask_erosion is not None:
+        FUSION['mask_erosion_px'] = {s: args.mask_erosion for s in SOURCES}
     if args.growth_ratio is not None:
         FUSION['growth_ratio'] = args.growth_ratio or None
     if args.eval_variants:

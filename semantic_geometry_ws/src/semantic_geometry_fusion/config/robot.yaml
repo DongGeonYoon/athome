@@ -8,6 +8,9 @@ geometry_fusion_node:
     lidar_topic: /cloud_registered_body
     camera_info_topic: /camera/camera/color/camera_info
     depth_topic: /camera/camera/aligned_depth_to_color/image_raw    # needs align_depth.enable:=true, "" = LiDAR only
+    # 2D mask edge erosion before LiDAR points, real robot only (require4 2; dataset builder uses the same 3 px for the
+    # robot source). Camera-LiDAR misalignment pulls background points across mask edges. Re-check with camera depth.
+    mask_erosion_px: 3
     T_cam_lidar: [
       -0.0019986, -0.9999089, -0.0133510, 0.0100374,
        0.0034152,  0.0133441, -0.9999051, 0.3686100,

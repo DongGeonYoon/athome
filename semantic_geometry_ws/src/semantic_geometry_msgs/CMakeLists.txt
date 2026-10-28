@@ -12,7 +12,6 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/SemanticObject2DArray.msg"
   "msg/ObjectObservation3D.msg"
   "msg/ObjectObservation3DArray.msg"
-  "msg/SearchTargets.msg"
   DEPENDENCIES std_msgs sensor_msgs geometry_msgs
 )
 
