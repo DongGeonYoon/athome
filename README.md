@@ -70,8 +70,17 @@ third_party/                      CG-D에 적용한 patch
 bash robot/scripts/record_premap.sh premap_A         # 위치추정 + 카메라 + LiDAR → rosbag (CAMERA=realsense: USB 3.0, 깊이 포함)
 bash robot/scripts/record_premap.sh stop
 bash robot/scripts/premap_to_server.sh premap_A --wait   # 서버로 보내 prebuild_from_bag.sh 실행 → 결과 받기
-#   서버: bag → keyframe → CG-D → objects.json, /data/.../scene_graphs/premap_A/<버전>/ (+ latest, manifest.json, 지도 버전)
+#   서버: bag → keyframe → CG-D → objects.json, /data/.../scene_graphs/premap_A/<버전>/ (+ latest, <이름>_<버전>.zip + .sha256)
 ```
+
+전달 묶음 (`<버전>/`, 결과는 로봇 PC `~/real/results/<이름>/scene_graph/`로 받음):
+
+| 폴더 / 파일 | 내용 |
+|---|---|
+| `scene_graph_dataset/` | `index.json`, `schema/objects.schema.json`, `scenes/robot_<이름>/` (`objects.json`, `metadata.json`, `points/`, `occupancy/`) |
+| `nav2_map/` | 사용한 지도의 2D occupancy grid (yaml + 이미지) + `SHA256SUMS` |
+| `pcd_map/` | 같은 지도의 위치추정용 PCD + `SHA256SUMS` (기본: Nav2 지도 이름에서 `_structural`을 뺀 `.pcd`, `PCD=`로 지정 가능) |
+| `manifest.json`, `README.md` | 이름, 버전, 물체 수, 지도 버전, 파일 해시 / 묶음 설명 |
 
 keyframe 폴더에서 직접: `tools/sim_sources/run_cgd_sources.sh <SOURCE_ROOT> v2` → `tools/scene_graph_dataset/build_dataset.py --exp <EXP> --sources robot`
 

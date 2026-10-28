@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Send a pre-mapping recording to the GPU server and build the Scene Graph dataset there (prebuild_from_bag.sh).
 #   bash premap_to_server.sh NAME [--wait]      NAME = folder under ~/real/results (record_premap.sh)
-#   --wait: wait for the server and copy the dataset version back to ~/real/results/NAME/scene_graph/<VERSION>
+#   --wait: wait for the server and copy the package back to ~/real/results/NAME/scene_graph/:
+#     <VERSION>/ (scene_graph_dataset/, nav2_map/, pcd_map/, manifest.json, README.md) + NAME_<VERSION>.zip(.sha256) to send
 # Server side: /data/athome/prebuild/robot_mapping/NAME/{bag, offline/}, log offline/prebuild.log
 NAME=${1:?NAME}; R=$HOME/real/results/$NAME; A=/data/athome; D=$A/prebuild/robot_mapping/$NAME
 source $HOME/real/config/gpu_server.env       # ATHOME_GPU_HOST / _PORT / _KEY
@@ -15,5 +16,6 @@ echo "[to_server] server processing started: $SSHC $H tail -f $D/offline/prebuil
 if [ "$2" = --wait ]; then
   until $SSHC $H "tail -n +$((N0 + 1)) $D/offline/prebuild.log | grep -q '\[prebuild\] done'" 2>/dev/null; do sleep 30; done
   V=$($SSHC $H "readlink $A/scene_graphs/$NAME/latest")
-  mkdir -p $R/scene_graph && RS $H:$A/scene_graphs/$NAME/$V $R/scene_graph/ && echo "[to_server] dataset $V -> $R/scene_graph/$V"
+  mkdir -p $R/scene_graph && RS $H:$A/scene_graphs/$NAME/$V $H:$A/scene_graphs/$NAME/${NAME}_$V.zip $H:$A/scene_graphs/$NAME/${NAME}_$V.zip.sha256 $R/scene_graph/ \
+    && (cd $R/scene_graph && sha256sum -c ${NAME}_$V.zip.sha256) && echo "[to_server] package $V -> $R/scene_graph/$V (+ ${NAME}_$V.zip)"
 fi
