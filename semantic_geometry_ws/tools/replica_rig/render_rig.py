@@ -9,10 +9,11 @@ poses where the robot body would intersect geometry are skipped.
 Output (CG-D ReplicaDataset layout):
   <out>/replica_rig/room0_rig/results/frame%06d.jpg, depth%06d.png (scale 6553.5)
   <out>/replica_rig/room0_rig/traj.txt   (camera-to-world, OpenCV, row-major 4x4 per line)
+  <out>/replica_rig/room0_rig/camera.json (K, size: needed by sim_sources/run_cgd_sources.sh and build_dataset.py)
   <out>/replica_rig/rig_replica.yaml     (CG-D dataset config)
   <out>/videos/room0_rig_rgb.mp4
 """
-import argparse, os, sys
+import argparse, json, os, sys
 import numpy as np, cv2, open3d as o3d
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -120,6 +121,7 @@ def main():
 
     np.savetxt(os.path.join(scene_dir, 'traj.txt'), np.array([T.reshape(-1) for T in poses]))
     np.savetxt(os.path.join(scene_dir, 'source_replica_index.txt'), np.array(kept_src, int), fmt='%d')
+    json.dump(dict(K=K.tolist(), width=W, height=H, distortion=[0] * 5), open(os.path.join(scene_dir, 'camera.json'), 'w'), indent=1)
     with open(os.path.join(args.out, 'replica_rig', 'rig_replica.yaml'), 'w') as f:
         f.write(f"""dataset_name: 'replica'
 camera_params:

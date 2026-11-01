@@ -95,6 +95,16 @@ third_party/                      CG-D에 적용한 patch 1건
 
 ## 설치
 
+0. **저장소 배치:** 스크립트가 아래 경로를 기준으로 동작합니다. clone한 뒤 링크로 맞춥니다.
+   ```bash
+   git clone https://github.com/DongGeonYoon/athome.git ~/athome
+   ln -s ~/athome/semantic_geometry_ws ~/semantic_geometry_ws       # 코드, colcon 워크스페이스
+   mkdir -p ~/real/results
+   ln -s ~/athome/robot/scripts ~/real/scripts                      # 로봇 PC 스크립트
+   ln -s ~/athome/robot/config ~/real/config                        # calibration, py_shim, gpu_server.env
+   ```
+   결과는 `~/real/results/<이름>/`에 생깁니다. 외부 코드는 `~/conceptgraph_ws`, conda는 `~/miniforge3`, 팀 위치추정 워크스페이스는 `~/fast_lio_ws`에 둡니다.
+
 1. 외부 코드 (아래 버전 clone, `~/conceptgraph_ws/` 아래):
 
 | 저장소 | commit |
@@ -115,13 +125,13 @@ third_party/                      CG-D에 적용한 patch 1건
    ```bash
    git clone --depth 1 -b dataset-v5-training --filter=blob:none --sparse https://github.com/robotjdals/AtHOME-object-search.git ~/team_repos/AtHOME-object-search
    git -C ~/team_repos/AtHOME-object-search sparse-checkout set ros2/athome_interfaces
-   ln -s ../../team_repos/AtHOME-object-search/ros2/athome_interfaces semantic_geometry_ws/src/athome_interfaces
+   ln -s ~/team_repos/AtHOME-object-search/ros2/athome_interfaces ~/semantic_geometry_ws/src/athome_interfaces
    ```
-5. ROS 2 Humble: `colcon build --packages-select athome_interfaces semantic_geometry_msgs semantic_geometry_fusion`
+5. ROS 2 Humble: `cd ~/semantic_geometry_ws && colcon build --packages-select athome_interfaces semantic_geometry_msgs semantic_geometry_fusion`
    - `robot_bag_extract.py`는 빌드된 `install/semantic_geometry_fusion/.../config/robot.yaml`에서 카메라 extrinsic을 읽습니다(`--robot-yaml`로 바꿀 수 있음).
    - GPU 서버처럼 Ubuntu 20.04이면 conda RoboStack을 씁니다: `server/ros_env.sh`, `server/build_ros_ws.sh`.
    - ROS 단계(bag 추출)와 CG-D 단계는 **다른 셸**에서 실행합니다(두 환경의 OpenCV가 섞이면 오류).
-6. **팀 위치추정 워크스페이스 필요 (이 저장소에 없음):** `start_localization.sh`는 `~/fast_lio_ws`의 `mppi_nav/slam_costmap_bringup.launch.py`를 실행합니다(Livox 드라이버, FAST_LIO_LOCALIZATION2, `body→base_link`, map_server, RViz). 위치추정 설정(FAST-LIO, calibration, TF)은 그 워크스페이스의 것을 그대로 씁니다.
+6. **팀 위치추정 워크스페이스 필요 (이 저장소에 없음):** `start_localization.sh`는 `~/fast_lio_ws`의 `mppi_nav/slam_costmap_bringup.launch.py`를 실행합니다(Livox 드라이버, FAST_LIO_LOCALIZATION2, `body→base_link`, map_server, RViz). 위치추정 설정(FAST-LIO, calibration, TF)은 그 워크스페이스의 것을 그대로 씁니다. Livox 메시지(`livox_ros_driver2`)도 이 워크스페이스에 있습니다(Gazebo bag 추출에 필요).
 7. GPU 서버 접속: `robot/config/gpu_server.env.example`을 `gpu_server.env`로 복사해 채웁니다(`.gitignore`로 저장소에 올라가지 않음).
 
 ## 사용: 사전 구축
@@ -147,9 +157,26 @@ bash robot/scripts/premap_to_server.sh premap_A --wait
 | `FLOOR_Z=<z>` | map 좌표의 바닥 높이. lab 지도는 −0.41, 다른 지도는 녹화 중 base_link 높이 중앙값 |
 
 - GPU 조각 하나에 CG-D 하나만 올라갑니다. live용 `cgd_server.py`가 켜져 있으면 처리를 시작하지 않으므로 먼저 끕니다(`pkill -f tools/robot_live/cgd_server.py`).
-- keyframe 폴더에서 직접: `tools/sim_sources/run_cgd_sources.sh <SOURCE_ROOT> v2` → `tools/scene_graph_dataset/build_dataset.py --exp <EXP> --sources robot --occupancy-map <nav2 yaml>`
 
-### 결과 묶음 (`scene_graphs/<이름>/<버전>/`)
+### 서버 없이 로컬 GPU로 처리 (`prebuild_from_bag.sh`는 서버 경로 `/data/athome`용)
+
+같은 세 단계를 직접 실행합니다. 1단계(ROS)와 2·3단계(conda `conceptgraph`)는 다른 셸에서 실행합니다.
+
+```bash
+EXP=~/real/results/premap_A/offline; S=$EXP/robot/sources/premap_A
+# 1) bag → keyframe (ROS 셸)
+source /opt/ros/humble/setup.bash && source ~/semantic_geometry_ws/install/setup.bash
+python3 ~/semantic_geometry_ws/tools/sim_sources/robot_bag_extract.py ~/real/results/premap_A/bag $S --name premap_A \
+    --max-speed 0.5 --max-turn 0.6 --kf-dist 0.3 --kf-yaw 5 --kf-gap 0.5
+#    lab 지도면 source.json의 floor_z를 -0.41로 바꿈 (다른 지도는 추출값 그대로)
+# 2) CG-D, 3) 데이터셋 (새 셸)
+bash ~/semantic_geometry_ws/tools/sim_sources/run_cgd_sources.sh $EXP/robot/sources v2
+~/miniforge3/envs/conceptgraph/bin/python ~/semantic_geometry_ws/tools/scene_graph_dataset/build_dataset.py \
+    --exp $EXP --sources robot --out-name sg --occupancy-map <nav2 yaml>
+#    → $EXP/sg/scenes/robot_premap_A/objects.json (8 GB GPU에서 47장 약 4분)
+```
+
+### 결과 묶음 (서버 처리: `scene_graphs/<이름>/<버전>/`)
 
 | 폴더 / 파일 | 내용 |
 |---|---|
@@ -160,6 +187,30 @@ bash robot/scripts/premap_to_server.sh premap_A --wait
 | `../<이름>_<버전>.zip` + `.sha256` | 전달용 묶음 |
 
 지도 버전: `"sha256:" + sha256(지도 yaml 바이트 + 이미지 바이트)` 앞 16자리. 주행 쪽이 불러온 지도와 같아야 합니다.
+
+## 사용: 시뮬레이션 실험
+
+실물 작업에는 필요 없습니다. 같은 빌더(`build_dataset.py --sources replica|replica_full|procthor|gazebo`)로 시뮬레이션 데이터셋을 만듭니다. 결과는 `--exp`(기본 `~/exp1`) 아래 `--out-name` 폴더에 생깁니다.
+
+| 소스 | GitHub 코드로 할 수 있는 것 | 필요한 외부 데이터 |
+|---|---|---|
+| Replica (NICE-SLAM, 방 1개) | 렌더링 → CG-D → 데이터셋 전 과정 | `~/conceptgraph_ws/Replica/` (`<장면>_mesh.ply`, `<장면>/traj.txt`) |
+| Gazebo | bag 추출 → CG-D → 데이터셋 | Gazebo 녹화 bag, GT 모델 위치 json, `fast_lio_ws`(Livox 메시지). Gazebo 시뮬레이터 환경은 저장소 밖 |
+| ProcTHOR, Replica full | 이미 수집한 원천 데이터에서 CG-D → 데이터셋 | 원천 데이터(`<exp>/procthor/sources`, `<exp>/replica_full/sources`). 새로 수집하는 도구는 태그 `full-20261028` |
+
+```bash
+# Replica room0: 렌더링 (results/, traj.txt, camera.json) → CG-D → 데이터셋
+PY=~/miniforge3/envs/conceptgraph/bin/python; T=~/semantic_geometry_ws/tools
+(cd $T/replica_rig && $PY render_rig.py --scene room0 --out ~/exp_sim)
+bash $T/sim_sources/run_cgd_sources.sh ~/exp_sim/replica_rig v2          # 400장, 8 GB GPU 약 30분
+(cd $T/scene_graph_dataset && $PY build_dataset.py --exp ~/exp_sim --sources replica --out-name sg)
+
+# Gazebo: bag 추출 (ROS 셸, fast_lio_ws 포함) → 이후 위와 같이 CG-D, --sources gazebo
+source /opt/ros/humble/setup.bash && source ~/fast_lio_ws/install/setup.bash && source ~/semantic_geometry_ws/install/setup.bash
+python3 $T/sim_sources/gazebo_extract.py <BAG_DIR> <GT_MODELS.json> <exp>/gazebo/sources/<이름>
+```
+
+확인(2026-11-01, 이 저장소 코드만 사용): run5 bag 추출은 서버와 같은 결과(keyframe 47, LiDAR 지도 동일), Replica room0 렌더링 궤적과 CG-D 검출 400장은 v0.8과 동일, Gazebo 추출은 v0.8 원천 데이터와 동일, ProcTHOR·Replica full·Gazebo 데이터셋 지표는 v0.8과 같은 수준(ProcTHOR 의미 정밀도 0.598, v0.8 0.600).
 
 ## 사용: live search
 
