@@ -16,16 +16,19 @@
 #         log: .../RUN/offline/prebuild.log
 # Steps (same code and settings as the robot PC's offline rebuild, run4 "offline5"):
 #   1 robot_bag_extract.py (ROS env): keyframes while still / slow (|v| <= 0.5 m/s, |w| <= 0.6 rad/s,
-#     every 0.3 m / 5 deg / 0.5 s), FAST-LIO body cloud 0.5 s, localization TF, floor z -0.41 (lab map)
+#     every 0.3 m / 5 deg / 0.5 s), FAST-LIO body cloud 0.5 s, localization TF, floor z -0.41 (lab map) or FLOOR_Z / base_link estimate
 #   2 run_cgd_sources.sh (conceptgraph env, GPU): CG-D v2 vocabulary on every keyframe
 #   3 build_dataset.py: fusion (association 1.1, stray points removed, fragment merge 0.9), Nav2 map as occupancy
 # MAP=<nav2 map yaml> overrides the lab map (/data/athome/prebuild/maps); PCD=<pcd> overrides its PCD map
 # (default: same name without "_structural", .pcd, next to the yaml).
+# FLOOR_Z=<z in map>: floor height. Default -0.41 for the lab map (floor plane of its PCD); for other maps the
+# extractor's estimate (median base_link z) is kept unless FLOOR_Z is given.
 set -e
 RUN=${1:?usage: prebuild_from_bag.sh RUN [extract options]}; shift
 A=/data/athome; R=$A/prebuild/robot_mapping/$RUN; O=$R/offline; S=$O/robot/sources/$RUN
 MAP=${MAP:-$A/prebuild/maps/lab_map_20261005_174210_structural.yaml}
 PCD=${PCD:-$(echo $MAP | sed 's/_structural\.yaml$/.pcd/')}
+FLOOR_Z=${FLOOR_Z:-$(case $MAP in */lab_map_20261005_174210_structural.yaml) echo -0.41;; esac)}
 [ -f $PCD ] || { echo "no PCD map: $PCD (set PCD=...)"; exit 1; }
 [ -d $R/bag ] || { echo "no bag: $R/bag"; exit 1; }
 # the GPU slice (9.5 GB) holds one CG-D at a time: live services must be stopped first
@@ -40,7 +43,8 @@ WST=$A/code/semantic_geometry_ws/tools
 if [ ! -f $S/source.json ]; then
   bash -c "source $A/server_sync/ros_env.sh && cd $WST/sim_sources && python robot_bag_extract.py $R/bag $S --name $RUN \
     --max-speed 0.5 --max-turn 0.6 --kf-dist 0.3 --kf-yaw 5 --kf-gap 0.5 $* && python -c \"import json;p='$S/source.json';\
-s=json.load(open(p));s['floor_z_base_link_median']=s['floor_z'];s['floor_z']=-0.41;json.dump(s,open(p,'w'),indent=1)\""
+s=json.load(open(p));s['floor_z_base_link_median']=s['floor_z'];s['floor_z']=float('${FLOOR_Z:-nan}') if '$FLOOR_Z' else s['floor_z'];\
+json.dump(s,open(p,'w'),indent=1)\""
 fi
 echo "[prebuild] keyframes: $(ls $S/results/frame*.jpg | wc -l)"
 VERSION=$(date +%Y%m%d_%H%M%S)

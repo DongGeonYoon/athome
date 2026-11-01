@@ -22,6 +22,7 @@ from rclpy.time import Time
 from nav_msgs.msg import OccupancyGrid
 from tf2_ros import Buffer, TransformListener
 from semantic_geometry_msgs.msg import ObjectObservation3DArray
+from athome_interfaces.msg import ObservedObjectArray
 
 SMALL = {'cup', 'mug', 'bottle', 'pen', 'remote control', 'cell phone', 'book', 'bowl', 'plate', 'keys', 'toy', 'box',
          'laptop', 'candle', 'vase', 'clock', 'basket', 'shoe', 'apple', 'kettle'}
@@ -46,7 +47,7 @@ class Monitor(Node):
         self.args, self.out = args, os.path.join(args.run, 'monitor')
         os.makedirs(self.out, exist_ok=True)
         self.frames, self.map_objs, self.grid, self.poses, self.t0 = [], [], None, [], time.time()
-        self.create_subscription(ObjectObservation3DArray, '/athome/perception/objects', self.on_frame, 50)
+        self.create_subscription(ObservedObjectArray, '/athome/perception/objects', self.on_frame, 50)
         self.create_subscription(ObjectObservation3DArray, '/semantic_geometry/static_map', self.on_map, 5)
         latched = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL, reliability=ReliabilityPolicy.RELIABLE)
         self.create_subscription(OccupancyGrid, '/map', self.on_grid, latched)
@@ -57,8 +58,8 @@ class Monitor(Node):
     def on_frame(self, msg):
         st = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
         self.frames.append(dict(t=st, objs=[dict(label=o.label, conf=float(o.confidence),
-                                                 c=[o.bbox_center.x, o.bbox_center.y, o.bbox_center.z],
-                                                 size=[o.size.x, o.size.y, o.size.z]) for o in msg.objects]))
+                                                 c=[o.bbox_center.position.x, o.bbox_center.position.y, o.bbox_center.position.z],
+                                                 size=[o.bbox_size.x, o.bbox_size.y, o.bbox_size.z]) for o in msg.objects]))
 
     def on_map(self, msg):
         self.map_objs = [dict(id=o.object_id, label=o.label, n=int(o.num_observations), conf=float(o.confidence),

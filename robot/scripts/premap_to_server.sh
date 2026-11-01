@@ -3,6 +3,8 @@
 #   bash premap_to_server.sh NAME [--wait]      NAME = folder under ~/real/results (record_premap.sh)
 #   --wait: wait for the server and copy the package back to ~/real/results/NAME/scene_graph/:
 #     <VERSION>/ (scene_graph_dataset/, nav2_map/, pcd_map/, manifest.json, README.md) + NAME_<VERSION>.zip(.sha256) to send
+# Map: NAME/map.env from record_premap.sh (MAP_PCD, MAP_YAML; none = lab map). The PCD, the yaml and its image go to
+#   /data/athome/prebuild/maps and the server builds with them (MAP=, PCD=).
 # Server side: /data/athome/prebuild/robot_mapping/NAME/{bag, offline/}, log offline/prebuild.log
 NAME=${1:?NAME}; R=$HOME/real/results/$NAME; A=/data/athome; D=$A/prebuild/robot_mapping/$NAME
 source $HOME/real/config/gpu_server.env       # ATHOME_GPU_HOST / _PORT / _KEY
@@ -10,8 +12,14 @@ SSHC="ssh -o BatchMode=yes -i $ATHOME_GPU_KEY -p $ATHOME_GPU_PORT"; H=$ATHOME_GP
 RS() { rsync -a --partial -e "$SSHC" --rsync-path=$A/miniforge3/bin/rsync "$@"; }
 [ -d $R/bag ] || { echo "no bag in $R"; exit 1; }
 $SSHC $H "mkdir -p $D" && RS $R/bag $R/sync.json $R/start_pose.txt $R/calibration.yaml $H:$D/ && echo "[to_server] sent $(du -sh $R/bag | cut -f1)"
+MENV=""
+if [ -f $R/map.env ]; then
+  source $R/map.env; IMG=$(dirname $MAP_YAML)/$(awk '/^image:/{print $2}' $MAP_YAML)
+  RS $MAP_PCD $MAP_YAML $IMG $H:$A/prebuild/maps/ && echo "[to_server] map $(basename $MAP_YAML) + $(basename $MAP_PCD)"
+  MENV="MAP=$A/prebuild/maps/$(basename $MAP_YAML) PCD=$A/prebuild/maps/$(basename $MAP_PCD)"
+fi
 N0=$($SSHC $H "cat $D/offline/prebuild.log 2>/dev/null | wc -l")      # only log lines of this run count below
-$SSHC $H "setsid nohup bash $A/server_sync/prebuild_from_bag.sh $NAME > /dev/null 2>&1 < /dev/null &" 
+$SSHC $H "$MENV setsid nohup bash $A/server_sync/prebuild_from_bag.sh $NAME > /dev/null 2>&1 < /dev/null &" 
 echo "[to_server] server processing started: $SSHC $H tail -f $D/offline/prebuild.log"
 if [ "$2" = --wait ]; then
   until $SSHC $H "tail -n +$((N0 + 1)) $D/offline/prebuild.log | grep -q '\[prebuild\] done'" 2>/dev/null; do sleep 30; done

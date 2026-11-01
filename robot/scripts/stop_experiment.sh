@@ -6,6 +6,8 @@ pkill -INT -f "ros2 bag recor[d]"; pkill -INT -f "lib/semantic_geometry_fusion/g
 for i in $(seq 30); do pgrep -f "geometry_fusion_nod[e]|ros2 bag recor[d]" >/dev/null || break; sleep 1; done
 pkill -f "perception.launch.p[y]"; pkill -f "cgd_server_lin[k].sh"     # tunnel loop of CGD=server (server keeps its models)
 pkill -INT -f "monitor_run.p[y]"                       # writes monitor/report.md from the final objects.json
-for i in $(seq 30); do pgrep -f "monitor_run.p[y]" >/dev/null || break; sleep 1; done
+pkill -INT -f "rqt_image_vie[w] /cg_d/annotated"         # Qt window ignores SIGTERM
+for i in $(seq 30); do pgrep -f "monitor_run.p[y]|cgd_live_nod[e]|rqt_image_vie[w] /cg_d/annotated" >/dev/null || break; sleep 1; done
+pkill -KILL -f "rqt_image_vie[w] /cg_d/annotated|cgd_live_nod[e]"
 echo "[experiment] stopped. results: $R"; ls $R 2>/dev/null
 [ -f "$R/objects.json" ] && python3 -c "import json,collections;o=json.load(open('$R/objects.json'))['objects'];print(len(o),'objects:',collections.Counter(x['semantic_tag'] for x in o).most_common(15))"

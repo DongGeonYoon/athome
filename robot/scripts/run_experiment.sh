@@ -9,7 +9,8 @@
 # 2 wait until localization has a pose (set it once in RViz with "2D Pose Estimate")
 # 3 timing check -> max_sync_dt_sec
 # 4 live CG-D (annotated frames, detections.jsonl) + geometry_fusion_node (mapping mode -> objects.json)
-# 5 rosbag (offline rebuild with tools/sim_sources/offline_scene_graph.sh)
+# 5 rosbag (offline rebuild with tools/sim_sources/offline_scene_graph.sh), rqt_image_view of /cg_d/annotated
+# Map: MAP_PCD=<pcd> MAP_YAML=<nav2 yaml> localize on another map (start_localization.sh), e.g. the 412 map
 # Stop with: bash ~/real/scripts/stop_experiment.sh   (SIGINT: final objects.json, bag closed)
 NAME=${1:-run_$(date +%Y%m%d_%H%M%S)}; R=$HOME/real/results/$NAME; mkdir -p $R/logs
 source $HOME/real/scripts/env.sh
@@ -31,4 +32,5 @@ setsid ros2 bag record -o $R/bag /tf /tf_static /map /livox/lidar /livox/imu /cl
   /camera/camera/color/camera_info /camera/camera/color/image_raw/compressed \
   /cg_d/objects_2d /cg_d/annotated /athome/perception/objects /athome/search/targets > $R/logs/bag.log 2>&1 < /dev/null &
 setsid python3 $S/monitor_run.py $R > $R/logs/monitor.log 2>&1 < /dev/null &   # association / accumulation / SG report
-echo "[experiment] running -> $R   (view: rqt_image_view /cg_d/annotated)"
+[ "${RQT:-1}" = 1 ] && { setsid ros2 run rqt_image_view rqt_image_view /cg_d/annotated > $R/logs/rqt.log 2>&1 < /dev/null & }   # live detections (RQT=0: off)
+echo "[experiment] running -> $R   (rqt_image_view /cg_d/annotated open; stop: bash $S/stop_experiment.sh)"
