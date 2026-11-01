@@ -23,6 +23,24 @@ AtHOME 프로젝트에서 인지를 맡은 코드입니다. 카메라 사진의 
    4 전달 묶음               scene_graph_dataset/ + nav2_map/ + pcd_map/ + manifest.json + zip/sha256
 ```
 
+## 실물 로봇 기준 환경 (시뮬레이션 구축 필요 없음)
+
+이 저장소는 **실물 로봇**(D435 + Mid-360, PCD 지도 위치추정)을 기준으로 합니다. 사전 구축과 live search 모두 시뮬레이터나 시뮬레이션 데이터 없이 동작합니다.
+
+| 필요한 것 | 내용 |
+|---|---|
+| 로봇 PC | ROS 2 Humble, 이 저장소의 `semantic_geometry_ws` 빌드, 팀 위치추정 워크스페이스(아래 설치 6) |
+| 지도 | 위치추정용 PCD 지도 + 같은 좌표의 Nav2 지도(yaml + 이미지). 실험 장소마다 먼저 만들어 둡니다 |
+| GPU 서버(또는 GPU PC) | `conceptgraph` 환경 + 가중치 (8 GB GPU에서 동작) |
+
+- `build_dataset.py`가 import하는 시뮬레이션 파일 4개(`rig_exp.py`, `render_rig.py`, `render_active_obs.py`, `plyload.py`)는 **공용 상수**(fusion 기준값, 센서 배치, 카메라 높이) 때문에 필요할 뿐입니다. 실물 데이터를 처리할 때 시뮬레이션 장면을 읽거나 렌더링하지 않습니다.
+  - 필요한 패키지는 open3d뿐이며, `requirements_server.txt`에 들어 있습니다.
+  - Replica 메쉬(`~/conceptgraph_ws/Replica/`)는 있을 때만 읽습니다.
+  - 실물 데이터의 occupancy는 녹화 LiDAR 점(`map_points.npz`)이나 Nav2 지도(`--occupancy-map`)로 만듭니다.
+- 시뮬레이션 데이터셋(Replica / ProcTHOR / Gazebo, v0.8)을 **다시 만들 때만** 추가로 필요한 것이 있습니다. 실물 작업에는 필요 없습니다.
+  - Replica 메쉬, ProcTHOR(AI2-THOR), Gazebo 시뮬레이션 환경(이 저장소 밖)
+  - 수집 도구(`thor_collect.py`, `replica_full_collect.py` 등): 태그 `full-20261028`
+
 ## 구성
 
 ```
@@ -103,7 +121,8 @@ third_party/                      CG-D에 적용한 patch 1건
    - `robot_bag_extract.py`는 빌드된 `install/semantic_geometry_fusion/.../config/robot.yaml`에서 카메라 extrinsic을 읽습니다(`--robot-yaml`로 바꿀 수 있음).
    - GPU 서버처럼 Ubuntu 20.04이면 conda RoboStack을 씁니다: `server/ros_env.sh`, `server/build_ros_ws.sh`.
    - ROS 단계(bag 추출)와 CG-D 단계는 **다른 셸**에서 실행합니다(두 환경의 OpenCV가 섞이면 오류).
-6. GPU 서버 접속: `robot/config/gpu_server.env.example`을 `gpu_server.env`로 복사해 채웁니다(`.gitignore`로 저장소에 올라가지 않음).
+6. **팀 위치추정 워크스페이스 필요 (이 저장소에 없음):** `start_localization.sh`는 `~/fast_lio_ws`의 `mppi_nav/slam_costmap_bringup.launch.py`를 실행합니다(Livox 드라이버, FAST_LIO_LOCALIZATION2, `body→base_link`, map_server, RViz). 위치추정 설정(FAST-LIO, calibration, TF)은 그 워크스페이스의 것을 그대로 씁니다.
+7. GPU 서버 접속: `robot/config/gpu_server.env.example`을 `gpu_server.env`로 복사해 채웁니다(`.gitignore`로 저장소에 올라가지 않음).
 
 ## 사용: 사전 구축
 
