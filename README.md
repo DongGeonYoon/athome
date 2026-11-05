@@ -219,7 +219,9 @@ bash robot/scripts/run_search.sh <사전 지도 objects.json>   # 위치추정 +
 bash robot/scripts/stop_experiment.sh
 ```
 
-- 서버 쪽 CG-D 서비스: `server/start_cgd_server.sh` (`ensure`: 이미 켜져 있으면 유지). SSH 터널은 `cgd_server_link.sh`가 유지합니다.
+- 탐색 중에는 RAM을 쓰지 않습니다. DINO 이름 목록은 `vocab/household.txt` + 목표 이름입니다(`CGD_RAM=1`이면 RAM 포함). 사전 지도 제작은 RAM을 그대로 씁니다. 근거: `docs/cgd_search_answers_20261105.md`
+- 서버 쪽 CG-D 서비스: `server/start_cgd_server.sh` (`ensure`: 이미 켜져 있으면 유지, RAM을 쓰는 요청은 GPU에서 처리, `GSA_RAM_GPU=0`이면 CPU). SSH 터널은 `cgd_server_link.sh`가 유지합니다.
+- 서버는 상자, 마스크, 이름, CLIP만 보냅니다. 검출 화면은 인식 노드가 구독자가 있거나 `--save-dir`일 때만 그립니다(`cgd_wire.draw_detections`). 통신 형식이 바뀌면 서버와 로봇 PC 코드를 함께 갱신합니다.
 - 인식 노드는 처리할 때마다 최신 사진만 쓰고, 회전 중(> 0.1 rad/s) 사진은 건너뜁니다. 서버·터널이 끊기면 다시 연결합니다.
 
 | 토픽 | 타입 | 내용 |
@@ -231,6 +233,7 @@ bash robot/scripts/stop_experiment.sh
 ## 주요 설정
 
 - CG-D: GroundingDINO GPU fp32, SAM ViT-H·CLIP fp16, RAM CPU (repo 설정 fp32와 검출·물체 결과 동일, GPU 최대 5.4 GB). `GSA_MODE=offload`는 fp32로 모델을 하나씩 GPU에 올림
+- live의 CLIP: 필터를 통과한 물체를 최대 16개씩 묶어 처리 (원본 방식과 cosine 0.9998 이상). 사전 지도 제작은 CG-D 원본 함수 그대로
 - 어휘 v2: 사진마다 RAM 태그 − `vocab/blocklist.txt` + `vocab/household.txt`, box/text threshold 0.2, 검출 신뢰도 0.25
 - fusion: 연결 점수 1.1, voxel 5 cm, 관측별 DBSCAN 0.15 m, 상자 전 튀는 점 제거, 같은 물체 재병합 cos 0.9
 - 실제 로봇 데이터만 2D 마스크 경계 3 px 축소 (`robot.yaml`, 빌더의 robot source)

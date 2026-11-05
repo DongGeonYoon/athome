@@ -2,7 +2,8 @@
 """
 CG-D as a service on the GPU server (no ROS there): the robot PC's cgd_remote_node.py sends one image (+ search target
 query names) through an SSH tunnel, this answers with the same detections cgd_live_node.py would publish
-(label, confidence, bbox, SAM mask, CLIP feature) and the annotated image. Listens on 127.0.0.1 only; the SSH tunnel
+(label, confidence, bbox, SAM mask, CLIP feature); no image, the receiving side draws. RAM is loaded when the first
+request with use_ram arrives (GSA_RAM_GPU=1: on the GPU, start_cgd_server.sh sets it). Listens on 127.0.0.1 only; the SSH tunnel
 (ssh -L PORT:127.0.0.1:PORT) is the only way in. One client at a time, frames processed in order.
   source /data/athome/activate.sh && python cgd_server.py [--port 47000]
 """
@@ -21,23 +22,27 @@ def serve(conn, engine, n_done):
         except (ConnectionError, ValueError):
             return n_done
         image = cv2.imdecode(np.frombuffer(img_bytes, np.uint8), cv2.IMREAD_COLOR)
-        r = engine.run(image, req.get('targets', []))
+        use_ram = bool(req.get('use_ram', True))
+        r = engine.run(image, req.get('targets', []), use_ram=use_ram)
         objs = r['objects']; H, Wd = image.shape[:2]
-        ok, ann = cv2.imencode('.jpg', r['annotated'], [cv2.IMWRITE_JPEG_QUALITY, 90])
         masks = W.pack_masks(np.stack([o['mask'] for o in objs]) if objs else np.zeros((0, H, Wd), bool))
         clip = np.stack([o['clip'] for o in objs]).astype(np.float32).tobytes() if objs else b''
-        W.send(conn, dict(id=req.get('id'), shape=[H, Wd], ram_tags=r['ram_tags'], n_classes=r['n_classes'],
-                          seconds=r['seconds'],
-                          objects=[{k: o[k] for k in ('detection_id', 'label', 'confidence', 'bbox')} for o in objs]),
-               [masks, clip, ann.tobytes()])
+        try:
+            W.send(conn, dict(id=req.get('id'), shape=[H, Wd], ram_tags=r['ram_tags'], n_classes=r['n_classes'],
+                              seconds=r['seconds'], timing=r['timing'],
+                              objects=[{k: o[k] for k in ('detection_id', 'label', 'confidence', 'bbox')} for o in objs]),
+                   [masks, clip])
+        except OSError:                            # client gone while this frame ran: wait for the next client
+            return n_done
         n_done += 1
         print(json.dumps(dict(t=time.strftime('%H:%M:%S'), frame=n_done, seconds=round(r['seconds'], 2), objects=len(objs),
+                              use_ram=use_ram, timing={k: round(v, 3) for k, v in r['timing'].items()},
                               query=req.get('targets', []))), flush=True)
 
 
 def main():
     ap = argparse.ArgumentParser(); ap.add_argument('--port', type=int, default=47000); a = ap.parse_args()
-    t0 = time.time(); engine = CGDEngine('cuda')
+    t0 = time.time(); engine = CGDEngine('cuda', use_ram=False)
     print(f'[cgd_server] models loaded in {time.time() - t0:.0f} s, listening on 127.0.0.1:{a.port}', flush=True)
     srv = socket.socket(); srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     srv.bind(('127.0.0.1', a.port)); srv.listen(1)

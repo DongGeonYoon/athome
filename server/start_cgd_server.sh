@@ -8,5 +8,6 @@ if [ "$1" = ensure ]; then
 fi
 for p in $(pgrep -f "tools/robot_live/[c]gd_server.py"); do kill $p; done; sleep 2
 source $A/activate.sh
+export GSA_RAM_GPU=${GSA_RAM_GPU:-1}     # live service only: requests with use_ram run RAM on the GPU (0: CPU); pre-mapping unchanged
 setsid nohup python $A/code/semantic_geometry_ws/tools/robot_live/cgd_server.py --port ${1:-47000} > $L/cgd_server.log 2>&1 < /dev/null &
 echo "cgd_server starting (pid $!), log $L/cgd_server.log"
