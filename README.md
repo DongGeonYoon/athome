@@ -126,13 +126,20 @@ pip install -r ~/athome/setup/requirements.txt
 | [chamferdist](https://github.com/krrish94/chamferdist) | `ee753899b5` |
 
 ```bash
-C=~/conceptgraph_ws; G=$C/Grounded-Segment-Anything
+C=~/conceptgraph_ws; G=$C/Grounded-Segment-Anything; mkdir -p $C/third_party
+get() { git clone -q $1 $2 && git -C $2 checkout -q $3; }
+get https://github.com/concept-graphs/concept-graphs.git              $C/concept-graphs        93277a02bd
+get https://github.com/IDEA-Research/Grounded-Segment-Anything.git    $G                       a4d76a2b55
+get https://github.com/xinyu1205/recognize-anything.git               $G/recognize-anything    7cb804a860
+get https://github.com/gradslam/gradslam.git                          $C/third_party/gradslam  59ca872e3d
+get https://github.com/krrish94/chamferdist.git                       $C/third_party/chamferdist ee753899b5
 git -C $C/concept-graphs apply ~/athome/third_party/concept-graphs_model_utils_device.patch   # .to("cuda") -> .to(device)
-export CUDA_HOME=$CONDA_PREFIX            # nvcc 11.8 (conda install -c nvidia/label/cuda-11.8.0 cuda-toolkit)
+
+conda install -y -c nvidia/label/cuda-11.8.0 cuda-toolkit && export CUDA_HOME=$CONDA_PREFIX   # GroundingDINO CUDA op
+pip install setuptools==68.2.2 wheel==0.41.2
 pip install --no-deps -e $C/concept-graphs -e $G/segment_anything -e $G/recognize-anything
 pip install --no-deps --no-build-isolation -e $G/GroundingDINO
-pip install --no-deps $C/third_party/gradslam
-export GSA_PATH=$G
+pip install --no-deps $C/third_party/chamferdist $C/third_party/gradslam
 ```
 
 ### 3. 가중치

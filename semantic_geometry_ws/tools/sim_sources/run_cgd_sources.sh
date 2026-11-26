@@ -6,14 +6,15 @@
 # VOCAB=0 runs plain CG-D tags.
 # Each ROOT/<scene>/ needs results/frame*.jpg, depth*.png, traj.txt, camera.json. Resumable per scene.
 ROOT=$1; SUFFIX=${2:-v2}
-VOC=$HOME/semantic_geometry_ws/tools/replica_rig/vocab
+TOOLS=$(dirname $(readlink -f $0))/..
+VOC=$TOOLS/replica_rig/vocab
 if [ "${VOCAB:-1}" = 1 ]; then export GSA_EXTRA_CLASSES_FILE=$VOC/household.txt GSA_BLOCK_TAGS_FILE=$VOC/blocklist.txt; fi
 ACC=""; [ "${ACCUMU:-0}" = 1 ] && ACC="--accumu_classes"
 export GSA_PATH=$HOME/conceptgraph_ws/Grounded-Segment-Anything
 export PYTHONHASHSEED=0
 export PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:256
 PY=${CGD_PYTHON:-$HOME/miniforge3/envs/conceptgraph/bin/python}
-RUNNER=$HOME/semantic_geometry_ws/tools/replica_rig/gsa_fast.py
+RUNNER=$TOOLS/replica_rig/gsa_fast.py
 for sd in "$ROOT"/*/; do
   s=$(basename "$sd")
   [ -f "$sd/camera.json" ] || continue
