@@ -185,7 +185,7 @@ def largest_cluster(points: np.ndarray, eps: float, min_samples: int = 3) -> np.
 def remove_outliers(points: np.ndarray, k: int = 8, std_ratio: float = 2.0, min_gap: float = 0.08,
                     min_points: int = 20) -> np.ndarray:
     """
-    Stray-point removal before the bbox (require3 problem 1: one point 11 cm above a desk top made the box 14 cm
+    Stray-point removal before the bbox (run4: one point 11 cm above a desk top made the box 14 cm
     too tall). Statistical outlier removal (mean distance to the k nearest neighbours > mean + std_ratio * std,
     as Open3D remove_statistical_outlier) restricted to isolated points (nearest neighbour farther than min_gap,
     i.e. beyond the 5 cm voxel spacing), so surface edges and thin parts stay. Clouds with fewer than min_points

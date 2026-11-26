@@ -2,7 +2,7 @@
 Replica room0 rendered from the real Tidybot rig + simulated Mid-360 -> semantic/geometric
 feature fusion -> Scene Graph Object-Centric Feature JSON.
 
-Conditions (same fusion code / parameters as geometry_fusion_node defaults):
+Conditions (same fusion code and parameters as the dataset builder):
   raw_livox     : raw Mid-360 scans in livox_frame, projected with T_cam_lidar, map <- lidar pose
   fastlio_body  : FAST-LIO /cloud_registered_body emulation (blind 0.2 m, point_filter_num 3,
                   IMU body frame), projected with T_cam_body, map <- body pose (costmap TF chain)
@@ -37,7 +37,7 @@ T_CAM_LIDAR = np.array([
     [0, 0, 0, 1.]])
 T_BODY_LIDAR = np.eye(4); T_BODY_LIDAR[:3, 3] = [-0.011, -0.02329, 0.04412]   # FAST-LIO extrinsic_T, R = I
 T_CAM_BODY = T_CAM_LIDAR @ np.linalg.inv(T_BODY_LIDAR)
-# Fusion parameters = config/fusion_params.yaml defaults
+# Fusion parameters (association threshold, voxel, nearest-neighbour distance) shared by all sources
 NN_DELTA, ASSOC_THR, VOXEL = 0.05, 1.1, 0.05   # 1.1: association threshold study (exp1/assoc_sweep)
 GATE = dict(k_mad=2.5, min_band=0.05)
 N_SCANS = 5                  # accumulation_window_sec 0.5 at 10 Hz
@@ -77,7 +77,7 @@ def mid360_scans(T_world_lidar, n_scans, noise=0.02):
 
 
 def sensor_cloud(scans, T_wl, cond):
-    """Returns (points in sensor frame, T_world_sensor, T_cam_sensor) as geometry_fusion_node would see them."""
+    """Returns (points in sensor frame, T_world_sensor, T_cam_sensor) as the LiDAR would deliver them."""
     if cond == 'raw_livox':
         return np.concatenate(scans), T_wl, T_CAM_LIDAR
     # FAST-LIO preprocess: blind range, keep every point_filter_num-th point, IMU body frame.

@@ -2,7 +2,7 @@
 # Team bringup: Livox + FAST_LIO_LOCALIZATION2 on the lab map (map -> camera_init -> body), body -> base_link,
 # /map (2D structural map). The map frame is the same for /map, the Scene Graph objects.json and
 # /athome/perception/objects.
-# Costmaps: global costmap = Nav2 on the navigation laptop (require2 4). The MPPI local costmap (/local_costmap/costmap)
+# Costmaps: global costmap = Nav2 on the navigation laptop. The MPPI local costmap (/local_costmap/costmap)
 # is not started here unless LOCAL_COSTMAP=1 (team check 2026-10-28: which PC runs it is still open).
 # Middleware: rmw_zenoh_cpp; the router is started by env.sh (ATHOME_ZENOH_ENDPOINT connects it to another PC), so the
 # bringup's own router stays off (one router per PC, port 7447).

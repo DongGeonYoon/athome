@@ -1,243 +1,304 @@
-# athome — 실내 물체 탐색 로봇의 인지(Perception) 모듈: 사전 구축
+# athome — 실내 물체 탐색 로봇의 사전 구축(Pre-mapping) 인지 모듈
 
-AtHOME 프로젝트에서 인지를 맡은 코드입니다. 카메라 사진의 의미 정보(ConceptGraphs CG-D: RAM → GroundingDINO → SAM → CLIP)와 LiDAR(Livox Mid-360)의 3D 위치를 합쳐 물체 feature를 만듭니다.
-
-- **사전 구축 (offline, 이 저장소의 중심):** 로봇으로 실내를 녹화한 rosbag을 GPU 서버에서 처리해 Scene Graph용 `objects.json`과 지도 파일 묶음을 만듭니다.
-- **live search (online):** 탐색 중 사진마다 관측된 물체를 `/athome/perception/objects`로 발행합니다(아래 "사용: live search").
-
-물체 feature: `F_j = {ID, label, CLIP(1024), 점구름, 3D 상자(center, size, yaw), 관측 수}`
-
-> 2026-11-01 정리: 확인·시험·평가용 코드(tag 확인, 지연·VRAM·정밀도 시험, 탐색 평가, 시뮬레이션 수집기)는 뺐습니다. 정리 전 전체판은 태그 `full-20261028`에 있습니다.
-
-## 처리 과정
+로봇으로 실내를 한 번 녹화한 rosbag에서 **Scene Graph 입력용 물체 데이터셋**(`objects.json`)을 만드는 코드입니다. 카메라 사진의 의미 정보는 foundation model 조합(ConceptGraphs의 CG-D: RAM → Grounding DINO → SAM → CLIP)으로 얻습니다. 3D 위치와 형상은 LiDAR(Livox Mid-360, FAST-LIO)로 얻습니다.
 
 ```
-[로봇 PC] record_premap.sh 또는 run_experiment.sh
+물체 j:  F_j = { object_id, semantic_tag, confidence, centroid, bbox_3d(center, size, yaw), clip_feature(1024), num_observations }
+          + points/obj_<id>.npy (map 좌표 점구름)
+```
+
+- 이 저장소는 **사전 구축(offline)만** 담습니다. 탐색 중 실시간 인식 코드까지 포함한 이전 판은 태그 `live-search-20261105`, 확인·시험 도구까지 포함한 판은 태그 `full-20261028`에 있습니다.
+- 실물 로봇(D435 + Mid-360, PCD 지도 위치추정)이 기준입니다. 시뮬레이션(Replica, ProcTHOR, Gazebo) 데이터셋도 같은 빌더로 만듭니다.
+
+---
+
+## 1. 처리 과정
+
+```
+[로봇 PC] robot/scripts/record_premap.sh
    위치추정(FAST_LIO_LOCALIZATION2, PCD 지도) + D435 RGB 1280×720 + Mid-360 → rosbag
-        │ premap_to_server.sh (bag + 지도 파일 전송, 처리 시작, 결과 받기)
+        │ premap_to_server.sh: bag + 지도 전송, 처리 시작, 결과 받기 (GPU PC에서 직접 처리해도 됨, 4.3절)
         ▼
-[GPU 서버] prebuild_from_bag.sh
-   1 robot_bag_extract.py   keyframe 추출 (정지·저속 구간, 0.3 m / 5° / 0.5 s), LiDAR body 점군, map 자세
-   2 run_cgd_sources.sh     CG-D (gsa_fast.py wrapper, 어휘 v2)
-   3 build_dataset.py       LiDAR fusion → objects.json (+ Nav2 지도를 occupancy로)
+[GPU] server/prebuild_from_bag.sh
+   1 robot_bag_extract.py   keyframe 선택(저속·정지 구간, 0.3 m / 5° / 0.5 s), keyframe별 LiDAR(0.5 s 누적), map 자세, LiDAR 지도
+   2 run_cgd_sources.sh     CG-D (gsa_fast.py: CG-D 원본 코드를 그대로 실행, 어휘 v2)
+   3 build_dataset.py       2D 검출 → LiDAR 3D 관측 → 물체 연결·융합 → objects.json (+ Nav2 지도를 occupancy로)
    4 전달 묶음               scene_graph_dataset/ + nav2_map/ + pcd_map/ + manifest.json + zip/sha256
+        │ (선택) 사람의 라벨 확인이 필요한 장소
+        ▼
+[GPU/PC] tools/label_correction/
+   prepare.py → build.py → finalize.py   검출별 태그 수정, 같은 태그끼리 연결, 단일 물품 여러 뷰 배치, 가구 맞춤
 ```
 
-## 실물 로봇 기준 환경 (시뮬레이션 구축 필요 없음)
+---
 
-이 저장소는 **실물 로봇**(D435 + Mid-360, PCD 지도 위치추정)을 기준으로 합니다. 사전 구축과 live search 모두 시뮬레이터나 시뮬레이션 데이터 없이 동작합니다.
+## 2. 참고한 foundation model과 논문
 
-| 필요한 것 | 내용 |
-|---|---|
-| 로봇 PC | ROS 2 Humble, 이 저장소의 `semantic_geometry_ws` 빌드, 팀 위치추정 워크스페이스(아래 설치 6) |
-| 지도 | 위치추정용 PCD 지도 + 같은 좌표의 Nav2 지도(yaml + 이미지). 실험 장소마다 먼저 만들어 둡니다 |
-| GPU 서버(또는 GPU PC) | `conceptgraph` 환경 + 가중치 (8 GB GPU에서 동작) |
+| 단계 | 모델 / 방법 | 논문 | 이 저장소에서 쓰는 형태 |
+|---|---|---|---|
+| 전체 틀 | ConceptGraphs (CG-D 검출 경로) | Gu et al., *ConceptGraphs: Open-Vocabulary 3D Scene Graphs for Perception and Planning*, ICRA 2024 (arXiv:2309.16650) | 사진마다 태그 → 검출 → 마스크 → CLIP을 만들고, 관측을 3D 물체로 연결·융합하는 구조 |
+| 태그 | RAM (Swin-L) | Zhang et al., *Recognize Anything: A Strong Image Tagging Model*, arXiv:2306.03514 | 사진의 물체 이름 후보 |
+| 검출 | Grounding DINO (SwinT-OGC) | Liu et al., *Grounding DINO: Marrying DINO with Grounded Pre-Training for Open-Set Object Detection*, ECCV 2024 (arXiv:2303.05499) | 이름 목록으로 상자 검출 (box/text threshold 0.2) |
+| 분할 | SAM (ViT-H) | Kirillov et al., *Segment Anything*, ICCV 2023 (arXiv:2304.02643) | 상자 → 마스크 |
+| 검출+분할 묶음 | Grounded-SAM | Ren et al., *Grounded SAM: Assembling Open-World Models for Diverse Visual Tasks*, arXiv:2401.14159 | Grounding DINO와 SAM을 잇는 공개 구현 |
+| 의미 feature | CLIP / OpenCLIP ViT-H-14 (laion2b_s32b_b79k) | Radford et al., *Learning Transferable Visual Models From Natural Language Supervision*, ICML 2021; Cherti et al., *Reproducible Scaling Laws for Contrastive Language-Image Learning*, CVPR 2023 | 마스크 영역 crop → 1024차원 feature |
+| 위치·LiDAR | FAST-LIO2 (+ PCD 지도 위치추정) | Xu et al., *FAST-LIO2: Fast Direct LiDAR-Inertial Odometry*, IEEE T-RO 2022 | map 좌표 자세, body 좌표 점군 |
+| 시뮬레이션 장면 | Replica, ProcTHOR | Straub et al., *The Replica Dataset*, arXiv:1906.05797; Deitke et al., *ProcTHOR*, NeurIPS 2022 | 정답(GT)이 있는 평가 장면 |
 
-- `build_dataset.py`가 import하는 시뮬레이션 파일 4개(`rig_exp.py`, `render_rig.py`, `render_active_obs.py`, `plyload.py`)는 **공용 상수**(fusion 기준값, 센서 배치, 카메라 높이) 때문에 필요할 뿐입니다. 실물 데이터를 처리할 때 시뮬레이션 장면을 읽거나 렌더링하지 않습니다.
-  - 필요한 패키지는 open3d뿐이며, `requirements_server.txt`에 들어 있습니다.
-  - Replica 메쉬(`~/conceptgraph_ws/Replica/`)는 있을 때만 읽습니다.
-  - 실물 데이터의 occupancy는 녹화 LiDAR 점(`map_points.npz`)이나 Nav2 지도(`--occupancy-map`)로 만듭니다.
-- 시뮬레이션 데이터셋(Replica / ProcTHOR / Gazebo, v0.8)을 **다시 만들 때만** 추가로 필요한 것이 있습니다. 실물 작업에는 필요 없습니다.
-  - Replica 메쉬, ProcTHOR(AI2-THOR), Gazebo 시뮬레이션 환경(이 저장소 밖)
-  - 수집 도구(`thor_collect.py`, `replica_full_collect.py` 등): 태그 `full-20261028`
+### 연결 점수 (ConceptGraphs 방식)
+새 관측 o와 지도 물체 j의 점수는 `φ_sem + φ_geo`이고, 기준값 이상이면 같은 물체로 봅니다.
+- `φ_sem = (cos(CLIP_o, CLIP_j) + 1) / 2`
+- `φ_geo`: o의 점 중 j의 점과 δ = 5 cm 안에 있는 비율
 
-## 구성
+융합하면 CLIP은 관측 수로 가중 평균한 뒤 정규화하고, 점은 voxel 5 cm로 합치며, 이름은 관측 이름의 다수결로 정합니다.
 
+---
+
+## 3. 원본 방법에서 바꾸거나 더한 것
+
+foundation model과 CG-D 원본 코드는 고치지 않았습니다. 장치 설정 patch 1건만 있습니다. 아래 변경은 모두 바깥 wrapper(`gsa_fast.py`)와 빌더에서 처리했습니다.
+
+| 원본 방식의 문제 | 이 저장소의 처리 | 근거 결과 |
+|---|---|---|
+| ConceptGraphs는 RGB-D depth로 3D를 만드는데, 로봇 D435는 USB 2.0이라 depth를 쓸 수 없음 | **LiDAR 기하:** 마스크 안에 투영되는 FAST-LIO body 점군(0.5 s 누적)을 사용, depth gate(MAD 2.5), 관측별 DBSCAN 0.15 m. depth는 LiDAR 점이 3개 미만일 때만 보조 | Gazebo 실제 ROS 경로와 오프라인 결과 비교: 물체 90쌍 일치, 중심 거리 중앙값 0.000 m |
+| 카메라–LiDAR 시각 차이·정렬 오차로 배경 점이 마스크 가장자리에 섞임 | **실물만 마스크 경계 3 px 축소** | run4 책상 위 작은 물체 6개 중 책상 "위"로 잡힌 수 1 → 5 |
+| 튀는 점 하나가 상자를 키움 | **상자 계산 전 외톨이 점 제거** (k = 8, 2σ, 8 cm 이상 떨어진 점) | run4 책상 윗면 높이 0.44 → 0.33 m |
+| RAM 태그가 프레임마다 누적되어 엉뚱한 이름이 늘고, 작은 생활용품 이름은 잘 안 나옴 | **어휘 v2:** 프레임별 RAM 태그 − `vocab/blocklist.txt`(풍경·그림 내용·사람·추상어) + `vocab/household.txt`(생활용품 46개), 누적 끔 | ProcTHOR 2개 집 의미 정밀도 0.33 → 0.52, 0.42 → 0.56 |
+| Grounding DINO 문구 → 클래스 대응이 첫 단어만 보고 실패하면 0번 클래스를 붙임 | **대응 규칙 교체:** 완전 일치 → 문구에 포함된 가장 긴 클래스 → 단어 일치 → 없으면 `other item` | 무작위 이름(예: `chocolate cake`)이 붙던 문제 제거 |
+| 연결 기준값 1.2는 CG-D(raw cosine) 기준이라 위 점수식에서는 검증되지 않음 | **GT 30개 장면에서 1.0–1.4를 비교해 1.1 채택** | 6.1절 표 |
+| 한 물체가 두 물체로 남음 (다른 면, 얇은 조각, 동의어 이름) | **내보내기 직전 재병합:** CLIP cos ≥ 0.9이고 공간을 공유하며, 합친 상자가 큰 쪽의 1.25배 이내일 때 | 실물 run2 쪼개짐 22 → 13쌍, GT 의미 재현율 유지(0.376 → 0.372) |
+| 문(2 m)에 `remote control` 같은 작은 물체 이름이 붙음 | **크기 사전 검사:** 작은 물체 이름의 상자가 상한 × 1.5를 넘으면 크기에 맞는 다른 투표 이름으로, 없으면 제외 | 비현실적 이름 제거 |
+| 8 GB GPU에서 원본 설정(전부 GPU fp32)이 메모리 부족 | **장치·정밀도 분할:** RAM은 CPU, SAM·CLIP은 fp16, Grounding DINO는 GPU fp32 | 원본 설정과 검출·물체 결과 동일, GPU 최대 5.4 GB |
+| 로봇 주행 데이터에는 keyframe, 지도 좌표, 바닥 높이가 없음 | **로봇 입력 변환:** 저속·정지 구간 keyframe, 위치추정 TF로 map 좌표, base_link 높이로 바닥 추정, Nav2 지도를 occupancy로 붙이고 지도 버전(해시)을 기록 | 2D 지도와 같은 좌표의 물체 지도 |
+| 자동 결과에 목록 밖 이름, 오검출, 같은 물품 중복이 남음 | **(선택) 사람의 라벨 확인 단계 `tools/label_correction`** (5절) | room_baram: 물체 41 → 34개, 목록에 있는 이름 25 → 34개, 중복 13 → 0 |
+
+---
+
+## 4. 설치와 사용
+
+### 4.1 설치
+0. **저장소 배치:** 스크립트가 아래 경로를 기준으로 동작합니다.
+   ```bash
+   git clone https://github.com/DongGeonYoon/athome.git ~/athome
+   ln -s ~/athome/semantic_geometry_ws ~/semantic_geometry_ws
+   mkdir -p ~/real/results
+   ln -s ~/athome/robot/scripts ~/real/scripts
+   ln -s ~/athome/robot/config ~/real/config
+   ```
+   외부 코드는 `~/conceptgraph_ws`, conda는 `~/miniforge3`, 팀 위치추정 워크스페이스는 `~/fast_lio_ws`에 둡니다.
+1. 외부 코드 (`~/conceptgraph_ws/` 아래, 아래 commit):
+
+   | 저장소 | commit |
+   |---|---|
+   | [concept-graphs](https://github.com/concept-graphs/concept-graphs) | `93277a02bd` + `third_party/concept-graphs_model_utils_device.patch` |
+   | [Grounded-Segment-Anything](https://github.com/IDEA-Research/Grounded-Segment-Anything) | `a4d76a2b55` |
+   | [recognize-anything](https://github.com/xinyu1205/recognize-anything) | `7cb804a860` |
+   | [gradslam](https://github.com/gradslam/gradslam) | `59ca872e3d` |
+   | [chamferdist](https://github.com/krrish94/chamferdist) | `ee753899b5` |
+
+   CG-D 수정은 patch 1건뿐입니다(`compute_clip_features`의 `.to("cuda")` → `.to(device)`).
+2. Python 환경 `conceptgraph` (python 3.10, torch 2.0.1 + cu118): `server/requirements_server.txt`, 설치 순서 `server/setup_server_env.sh`, 환경 설정 `server/activate.sh`
+3. 가중치: `server/download_weights.sh` (해시 `server/weights.sha256`)
+4. ROS 2 Humble: bag 추출(`robot_bag_extract.py`)에만 필요합니다. 이 저장소에는 빌드할 ROS 패키지가 없습니다. Ubuntu 20.04 서버에서는 conda RoboStack 환경을 씁니다(`server/ros_env.sh`).
+   - ROS 단계(bag 추출)와 CG-D 단계는 **다른 셸**에서 실행합니다. 두 환경의 OpenCV가 섞이면 오류가 납니다.
+5. **팀 위치추정 워크스페이스 (이 저장소에 없음):** `start_localization.sh`는 `~/fast_lio_ws`의 `mppi_nav/slam_costmap_bringup.launch.py`를 실행합니다. 위치추정 설정(FAST-LIO, calibration, TF)은 그 워크스페이스의 것을 그대로 씁니다.
+6. 카메라 extrinsic: `semantic_geometry_ws/config/robot_calibration.yaml` (`T_cam_body`)
+7. GPU 서버를 쓸 때: `robot/config/gpu_server.env.example`을 `gpu_server.env`로 복사해 채웁니다(저장소에 올라가지 않음).
+
+### 4.2 녹화 (로봇 PC)
+```bash
+MAP_PCD=<pcd> MAP_YAML=<nav2 yaml> bash robot/scripts/record_premap.sh premap_A
+#  RViz에서 "2D Pose Estimate"로 시작 위치를 지정하면 그때부터 녹화가 시작됩니다.
+#  로봇은 천천히 움직이고 자주 멈춥니다 (keyframe은 멈췄거나 느린 구간에서 뽑힘).
+bash robot/scripts/record_premap.sh stop
 ```
-semantic_geometry_ws/
-  src/semantic_geometry_fusion/   fusion 라이브러리 + ROS 2 노드
-      geometry.py                 DBSCAN, 튀는 점 제거, 3D 상자
-      association.py              관측–물체 연결 점수 (φ_sem=(cos+1)/2 + φ_geo)
-      feature_fusion.py           연결·융합·재병합 (사전 구축과 live 공통)
-      scene_graph_export.py       objects.json 쓰기
-      geometry_fusion_node.py     ROS 노드 (live / mapping), prior_map.py: 사전 지도 ID 연결
-      config/                     fusion_params.yaml, robot.yaml(T_cam_body, 마스크 경계 3 px); launch/
-  src/semantic_geometry_msgs/     2D/3D 관측 메시지
-  src/athome_interfaces/          (포함 안 됨) 탐색 서버 팀 메시지 패키지 — 아래 설치 4
-  tools/
-    sim_sources/
-      robot_bag_extract.py        ★ 사전 구축 1단계: bag → keyframe (gazebo_extract.py의 bag 읽기 함수 사용)
-      run_cgd_sources.sh          ★ 2단계: keyframe 폴더에 CG-D 실행
-      gazebo_extract.py           bag 읽기·자세 보간 (Gazebo 시뮬레이션 추출도 포함)
-    replica_rig/
-      gsa_fast.py                 ★ CG-D 실행 wrapper (CG-D 코드는 그대로, 8 GB GPU용 장치·정밀도 분할)
-      vocab/                      어휘 v2: blocklist.txt(제외 태그), household.txt(추가 46개)
-      rig_exp.py, render_rig.py, render_active_obs.py   build_dataset.py가 import (센서 상수, 시뮬레이션 장면)
-    replica_feasibility/plyload.py   rig_exp.py가 import
-    scene_graph_dataset/
-      build_dataset.py            ★ 3단계: 데이터셋 빌더 (실제 로봇 + 시뮬레이션 소스), objects.schema.json
-    robot_live/                   live search: cgd_live_node, cgd_engine, cgd_server / cgd_wire (GPU 서버 CG-D 서비스)
-                                  v4l2_rgbd_node.py: USB 2.0 카메라 노드 (녹화에도 사용)
-robot/
-  scripts/                        로봇 PC 스크립트 (아래 표)
-  config/                         calibration.yaml, fastdds_shm.xml, py_shim(위치추정 open3d import 우회),
-                                  gpu_server.env.example (서버 접속 설정 틀)
-server/                           GPU 서버: 환경 설치, 가중치, prebuild_from_bag.sh, live용 start_cgd_server.sh
-third_party/                      CG-D에 적용한 patch 1건
-```
-
-### 로봇 PC 스크립트 (`robot/scripts/`)
 
 | 스크립트 | 역할 |
 |---|---|
-| `env.sh` | ROS 환경, `ROS_DOMAIN_ID=25`, `rmw_zenoh_cpp`(라우터 자동 실행, `ATHOME_RMW=fastdds`로 되돌림) |
-| `start_localization.sh` | Livox + FAST_LIO_LOCALIZATION2 + map_server + RViz. `MAP_PCD=`, `MAP_YAML=`로 지도 지정(없으면 launch 기본 lab 지도) |
-| `start_camera_v4l2.sh` | D435 컬러를 V4L2로 직접 읽음 (USB 2.0, 1280×720 10 fps, depth 없음). `start_camera.sh`는 USB 3.0용 공식 드라이버 |
-| `record_premap.sh` | **사전 구축 녹화**: 위치추정 + 카메라 + 시각 차이 확인 + rosbag. 쓴 지도를 `<이름>/map.env`에 기록 |
-| `run_experiment.sh` | 녹화 + 실시간 CG-D·fusion을 함께 실행, rqt 검출 화면 자동 실행 |
-| `recog_wait_monitor.py` | 녹화 중 확인 창: 멈춘 뒤 찍힌 사진이 CG-D로 몇 장 처리됐는지 → 다음 위치로 이동해도 되는지 표시 |
-| `heading_guide.py` | (선택) 제자리 회전 방향 안내 |
-| `check_sync.py` | 카메라–LiDAR 시각 차이 측정 (`max_sync_dt_sec` 권장값) |
-| `premap_to_server.sh` | bag·지도 파일을 GPU 서버로 보내 `prebuild_from_bag.sh` 실행, `--wait`이면 결과 묶음 받기 |
-| `stop_experiment.sh`, `stop_all.sh` | 녹화·인지 종료 / 위치추정·카메라까지 종료 |
-| `monitor_run.py` | `run_experiment.sh`가 띄우는 누적 상황 기록 |
-| `run_search.sh`, `run_cgd_live.sh`, `cgd_server_link.sh` | live search (아래) |
+| `env.sh` | ROS 환경, `ROS_DOMAIN_ID=25`, `rmw_zenoh_cpp` (`ATHOME_RMW=fastdds`로 되돌림) |
+| `start_localization.sh` | Livox + FAST_LIO_LOCALIZATION2 + map_server + RViz (`MAP_PCD`, `MAP_YAML`) |
+| `start_camera_v4l2.sh`, `v4l2_rgbd_node.py` | D435 컬러를 V4L2로 직접 읽음 (USB 2.0, 1280×720). `start_camera.sh`는 USB 3.0용 공식 드라이버 |
+| `check_sync.py` | 카메라–LiDAR 시각 차이 측정 |
+| `record_premap.sh` | 위치추정 + 카메라 + 위치 지정 대기 + 시각 차이 확인 + rosbag. 쓴 지도를 `map.env`에 기록 |
+| `premap_to_server.sh` | bag·지도를 GPU 서버로 보내 처리, `--wait`이면 결과 묶음 받기 |
+| `stop_all.sh` | 녹화·카메라·위치추정 종료 |
 
-## 설치
-
-0. **저장소 배치:** 스크립트가 아래 경로를 기준으로 동작합니다. clone한 뒤 링크로 맞춥니다.
-   ```bash
-   git clone https://github.com/DongGeonYoon/athome.git ~/athome
-   ln -s ~/athome/semantic_geometry_ws ~/semantic_geometry_ws       # 코드, colcon 워크스페이스
-   mkdir -p ~/real/results
-   ln -s ~/athome/robot/scripts ~/real/scripts                      # 로봇 PC 스크립트
-   ln -s ~/athome/robot/config ~/real/config                        # calibration, py_shim, gpu_server.env
-   ```
-   결과는 `~/real/results/<이름>/`에 생깁니다. 외부 코드는 `~/conceptgraph_ws`, conda는 `~/miniforge3`, 팀 위치추정 워크스페이스는 `~/fast_lio_ws`에 둡니다.
-
-1. 외부 코드 (아래 버전 clone, `~/conceptgraph_ws/` 아래):
-
-| 저장소 | commit |
-|---|---|
-| [concept-graphs](https://github.com/concept-graphs/concept-graphs) | `93277a02bd` + `third_party/concept-graphs_model_utils_device.patch` |
-| [Grounded-Segment-Anything](https://github.com/IDEA-Research/Grounded-Segment-Anything) | `a4d76a2b55` |
-| [recognize-anything](https://github.com/xinyu1205/recognize-anything) | `7cb804a860` |
-| [gradslam](https://github.com/gradslam/gradslam) | `59ca872e3d` |
-| [chamferdist](https://github.com/krrish94/chamferdist) | `ee753899b5` |
-
-   CG-D 수정은 patch 1건뿐입니다(`model_utils.compute_clip_features`의 `.to("cuda")` → `.to(device)`). GPU 결과는 같습니다.
-
-2. Python 환경 `conceptgraph` (python 3.10, torch 2.0.1 + cu118): `server/requirements_server.txt`, 설치 순서 `server/setup_server_env.sh`, 환경 설정 `server/activate.sh`
-3. 가중치: `server/download_weights.sh` (GroundingDINO SwinT-OGC, SAM ViT-H, RAM Swin-L, MobileSAM, CLIP ViT-H-14 laion2b_s32b_b79k; `server/weights.sha256`)
-4. **`athome_interfaces` 패키지 필요 (이 저장소에 없음):** 탐색 서버 팀 저장소
-   [robotjdals/AtHOME-object-search](https://github.com/robotjdals/AtHOME-object-search) (`dataset-v5-training` 브랜치)의
-   `ros2/athome_interfaces`를 `semantic_geometry_ws/src/athome_interfaces`로 링크합니다.
-   ```bash
-   git clone --depth 1 -b dataset-v5-training --filter=blob:none --sparse https://github.com/robotjdals/AtHOME-object-search.git ~/team_repos/AtHOME-object-search
-   git -C ~/team_repos/AtHOME-object-search sparse-checkout set ros2/athome_interfaces
-   ln -s ~/team_repos/AtHOME-object-search/ros2/athome_interfaces ~/semantic_geometry_ws/src/athome_interfaces
-   ```
-5. ROS 2 Humble: `cd ~/semantic_geometry_ws && colcon build --packages-select athome_interfaces semantic_geometry_msgs semantic_geometry_fusion`
-   - `robot_bag_extract.py`는 빌드된 `install/semantic_geometry_fusion/.../config/robot.yaml`에서 카메라 extrinsic을 읽습니다(`--robot-yaml`로 바꿀 수 있음).
-   - GPU 서버처럼 Ubuntu 20.04이면 conda RoboStack을 씁니다: `server/ros_env.sh`, `server/build_ros_ws.sh`.
-   - ROS 단계(bag 추출)와 CG-D 단계는 **다른 셸**에서 실행합니다(두 환경의 OpenCV가 섞이면 오류).
-6. **팀 위치추정 워크스페이스 필요 (이 저장소에 없음):** `start_localization.sh`는 `~/fast_lio_ws`의 `mppi_nav/slam_costmap_bringup.launch.py`를 실행합니다(Livox 드라이버, FAST_LIO_LOCALIZATION2, `body→base_link`, map_server, RViz). 위치추정 설정(FAST-LIO, calibration, TF)은 그 워크스페이스의 것을 그대로 씁니다. Livox 메시지(`livox_ros_driver2`)도 이 워크스페이스에 있습니다(Gazebo bag 추출에 필요).
-7. GPU 서버 접속: `robot/config/gpu_server.env.example`을 `gpu_server.env`로 복사해 채웁니다(`.gitignore`로 저장소에 올라가지 않음).
-
-## 사용: 사전 구축
-
+### 4.3 데이터셋 만들기
+GPU 서버:
 ```bash
-# 1) 로봇 PC: 녹화 (로봇은 손으로 천천히 움직이고 자주 멈춤)
-MAP_PCD=<maps>/<지도>.pcd MAP_YAML=<maps>/<지도>.yaml bash robot/scripts/record_premap.sh premap_A
-#    RViz에서 "2D Pose Estimate"로 시작 위치 지정 → 녹화 시작
-#    실시간 인식도 같이 보려면 record_premap.sh 대신 run_experiment.sh, 확인 창은 python3 robot/scripts/recog_wait_monitor.py
-bash robot/scripts/record_premap.sh stop
-
-# 2) 서버로 보내 처리하고 결과 받기
 bash robot/scripts/premap_to_server.sh premap_A --wait
-#    → 로봇 PC ~/real/results/premap_A/scene_graph/<버전>/ + premap_A_<버전>.zip(.sha256)
+#  → ~/real/results/premap_A/scene_graph/<버전>/ + premap_A_<버전>.zip(.sha256)
 ```
-
-서버에서 직접 실행: `bash server/prebuild_from_bag.sh <이름>` (bag 위치 `/data/athome/prebuild/robot_mapping/<이름>/bag`)
-
-| 옵션 (환경 변수) | 뜻 |
-|---|---|
-| `MAP=<nav2 yaml>` | occupancy로 쓸 Nav2 지도 (기본 lab 지도). `premap_to_server.sh`가 `map.env`에서 자동 지정 |
-| `PCD=<pcd>` | 함께 전달할 위치추정 PCD (기본: yaml 이름에서 `_structural`을 뺀 `.pcd`) |
-| `FLOOR_Z=<z>` | map 좌표의 바닥 높이. lab 지도는 −0.41, 다른 지도는 녹화 중 base_link 높이 중앙값 |
-
-- GPU 조각 하나에 CG-D 하나만 올라갑니다. live용 `cgd_server.py`가 켜져 있으면 처리를 시작하지 않으므로 먼저 끕니다(`pkill -f tools/robot_live/cgd_server.py`).
-
-### 서버 없이 로컬 GPU로 처리 (`prebuild_from_bag.sh`는 서버 경로 `/data/athome`용)
-
-같은 세 단계를 직접 실행합니다. 1단계(ROS)와 2·3단계(conda `conceptgraph`)는 다른 셸에서 실행합니다.
-
+GPU PC에서 직접:
 ```bash
-EXP=~/real/results/premap_A/offline; S=$EXP/robot/sources/premap_A
+T=~/semantic_geometry_ws/tools; EXP=~/exp_premap
 # 1) bag → keyframe (ROS 셸)
-source /opt/ros/humble/setup.bash && source ~/semantic_geometry_ws/install/setup.bash
-python3 ~/semantic_geometry_ws/tools/sim_sources/robot_bag_extract.py ~/real/results/premap_A/bag $S --name premap_A \
-    --max-speed 0.5 --max-turn 0.6 --kf-dist 0.3 --kf-yaw 5 --kf-gap 0.5
-#    lab 지도면 source.json의 floor_z를 -0.41로 바꿈 (다른 지도는 추출값 그대로)
-# 2) CG-D, 3) 데이터셋 (새 셸)
-bash ~/semantic_geometry_ws/tools/sim_sources/run_cgd_sources.sh $EXP/robot/sources v2
-~/miniforge3/envs/conceptgraph/bin/python ~/semantic_geometry_ws/tools/scene_graph_dataset/build_dataset.py \
-    --exp $EXP --sources robot --out-name sg --occupancy-map <nav2 yaml>
-#    → $EXP/sg/scenes/robot_premap_A/objects.json (8 GB GPU에서 47장 약 4분)
+source /opt/ros/humble/setup.bash
+python3 $T/sim_sources/robot_bag_extract.py ~/real/results/premap_A/bag $EXP/robot/sources/premap_A --name premap_A \
+  --max-speed 0.5 --max-turn 0.6 --kf-dist 0.3 --kf-yaw 5 --kf-gap 0.5
+# 2) CG-D, 3) 데이터셋 (새 셸, conceptgraph 환경)
+bash $T/sim_sources/run_cgd_sources.sh $EXP/robot/sources v2
+(cd $T/scene_graph_dataset && ~/miniforge3/envs/conceptgraph/bin/python build_dataset.py --exp $EXP --sources robot --out-name sg \
+  --occupancy-map <nav2 yaml>)
+#  → $EXP/sg/scenes/robot_premap_A/objects.json  (8 GB GPU에서 keyframe 47장 약 4분)
 ```
 
-### 결과 묶음 (서버 처리: `scene_graphs/<이름>/<버전>/`)
-
-| 폴더 / 파일 | 내용 |
+| 결과 | 내용 |
 |---|---|
-| `scene_graph_dataset/` | `index.json`, `schema/objects.schema.json`, `scenes/robot_<이름>/` (`objects.json`, `objects_all.json`, `points/obj_<id>.npy`, `occupancy/`, `metadata.json`) — 형식 v0.8 |
-| `nav2_map/` | 사용한 지도의 2D occupancy grid (map_server yaml + 이미지) + `SHA256SUMS` |
-| `pcd_map/` | 같은 지도의 위치추정용 PCD + `SHA256SUMS` |
-| `manifest.json`, `README.md` | 이름, 버전, 물체 수, 지도 버전, 파일 해시 |
-| `../<이름>_<버전>.zip` + `.sha256` | 전달용 묶음 |
+| `scene_graph_dataset/` | `index.json`, `schema/objects.schema.json`, `scenes/robot_<이름>/` (`objects.json`, `objects_all.json`, `points/`, `occupancy/`, `metadata.json`), 형식 v0.8 |
+| `nav2_map/`, `pcd_map/` | 사용한 2D 지도(yaml + 이미지), 위치추정 PCD, 각 `SHA256SUMS` |
+| `manifest.json` | 이름, 버전, 물체 수, 지도 버전 `"sha256:" + sha256(yaml 바이트 + 이미지 바이트)` 앞 16자리 |
 
-지도 버전: `"sha256:" + sha256(지도 yaml 바이트 + 이미지 바이트)` 앞 16자리. 주행 쪽이 불러온 지도와 같아야 합니다.
+- `objects.json`은 관측 2회 이상이고 일반 태그(`other item` 등)가 아닌 물체만 담습니다. `objects_all.json`은 필터 전 전체입니다.
 
-## 사용: 시뮬레이션 실험
-
-실물 작업에는 필요 없습니다. 같은 빌더(`build_dataset.py --sources replica|replica_full|procthor|gazebo`)로 시뮬레이션 데이터셋을 만듭니다. 결과는 `--exp`(기본 `~/exp1`) 아래 `--out-name` 폴더에 생깁니다.
-
-| 소스 | GitHub 코드로 할 수 있는 것 | 필요한 외부 데이터 |
-|---|---|---|
-| Replica (NICE-SLAM, 방 1개) | 렌더링 → CG-D → 데이터셋 전 과정 | `~/conceptgraph_ws/Replica/` (`<장면>_mesh.ply`, `<장면>/traj.txt`) |
-| Gazebo | bag 추출 → CG-D → 데이터셋 | Gazebo 녹화 bag, GT 모델 위치 json, `fast_lio_ws`(Livox 메시지). Gazebo 시뮬레이터 환경은 저장소 밖 |
-| ProcTHOR, Replica full | 이미 수집한 원천 데이터에서 CG-D → 데이터셋 | 원천 데이터(`<exp>/procthor/sources`, `<exp>/replica_full/sources`). 새로 수집하는 도구는 태그 `full-20261028` |
-
+### 4.4 시뮬레이션 데이터셋
+같은 빌더로 `--sources replica|replica_full|procthor|gazebo`를 지정합니다.
+- **Replica:** 렌더링부터 할 수 있습니다(`replica_rig/render_rig.py`).
+- **Gazebo:** bag 추출(`sim_sources/gazebo_extract.py`, Livox 메시지가 있는 `fast_lio_ws` 필요)부터 할 수 있습니다.
+- **ProcTHOR, Replica 전체판:** 수집해 둔 원천 데이터가 필요합니다(수집 도구는 태그 `full-20261028`).
 ```bash
-# Replica room0: 렌더링 (results/, traj.txt, camera.json) → CG-D → 데이터셋
 PY=~/miniforge3/envs/conceptgraph/bin/python; T=~/semantic_geometry_ws/tools
 (cd $T/replica_rig && $PY render_rig.py --scene room0 --out ~/exp_sim)
-bash $T/sim_sources/run_cgd_sources.sh ~/exp_sim/replica_rig v2          # 400장, 8 GB GPU 약 30분
+bash $T/sim_sources/run_cgd_sources.sh ~/exp_sim/replica_rig v2
 (cd $T/scene_graph_dataset && $PY build_dataset.py --exp ~/exp_sim --sources replica --out-name sg)
-
-# Gazebo: bag 추출 (ROS 셸, fast_lio_ws 포함) → 이후 위와 같이 CG-D, --sources gazebo
-source /opt/ros/humble/setup.bash && source ~/fast_lio_ws/install/setup.bash && source ~/semantic_geometry_ws/install/setup.bash
-python3 $T/sim_sources/gazebo_extract.py <BAG_DIR> <GT_MODELS.json> <exp>/gazebo/sources/<이름>
 ```
 
-확인(2026-11-01, 이 저장소 코드만 사용): run5 bag 추출은 서버와 같은 결과(keyframe 47, LiDAR 지도 동일), Replica room0 렌더링 궤적과 CG-D 검출 400장은 v0.8과 동일, Gazebo 추출은 v0.8 원천 데이터와 동일, ProcTHOR·Replica full·Gazebo 데이터셋 지표는 v0.8과 같은 수준(ProcTHOR 의미 정밀도 0.598, v0.8 0.600).
+---
 
-## 사용: live search
+## 5. (선택) 라벨 확인 단계: `tools/label_correction`
+
+자동 결과에는 목록 밖 이름(`instrument`, `dish washer`), 오검출(칸막이, 그림), 같은 물품의 중복이 남습니다. 방에 놓인 물품 목록을 아는 경우 사람이 검출 단위로 태그를 정하고, 나머지를 다시 만듭니다. foundation model과 빌더 코드는 그대로이며, 결정과 설정 파일만 방마다 다릅니다. 예시: `configs/room_baram_labels.txt`, `configs/room_baram.yaml`
 
 ```bash
-bash robot/scripts/run_search.sh <사전 지도 objects.json>   # 위치추정 + 카메라 + CG-D(GPU 서버, CGD=local이면 로봇 PC) + fusion(online)
-bash robot/scripts/stop_experiment.sh
+L=~/semantic_geometry_ws/tools/label_correction; PY=~/miniforge3/envs/conceptgraph/bin/python; SRC=$EXP/robot/sources/<이름>
+$PY $L/prepare.py $SRC labels.txt --exclude-keyframes 0
+$PY $L/build.py --exp $EXP --occupancy-map <nav2 yaml> --single-view-tags cup,headphone,plate --trace trace.json
+$PY $L/finalize.py room.yaml $SRC labels.txt $EXP/sg_labeled out_dataset --trace trace.json --keyframe-json kf/ --figures fig/
 ```
 
-- 탐색 중에는 RAM을 쓰지 않습니다. DINO 이름 목록은 `vocab/household.txt` + 목표 이름입니다(`CGD_RAM=1`이면 RAM 포함). 사전 지도 제작은 RAM을 그대로 씁니다. 근거: `docs/cgd_search_answers_20261105.md`
-- 서버 쪽 CG-D 서비스: `server/start_cgd_server.sh` (`ensure`: 이미 켜져 있으면 유지, RAM을 쓰는 요청은 GPU에서 처리, `GSA_RAM_GPU=0`이면 CPU). SSH 터널은 `cgd_server_link.sh`가 유지합니다.
-- 서버는 상자, 마스크, 이름, CLIP만 보냅니다. 검출 화면은 인식 노드가 구독자가 있거나 `--save-dir`일 때만 그립니다(`cgd_wire.draw_detections`). 통신 형식이 바뀌면 서버와 로봇 PC 코드를 함께 갱신합니다.
-- 인식 노드는 처리할 때마다 최신 사진만 쓰고, 회전 중(> 0.1 rad/s) 사진은 건너뜁니다. 서버·터널이 끊기면 다시 연결합니다.
+| 단계 | 내용 |
+|---|---|
+| `labels.txt` | keyframe마다 `<keyframe>: <검출 id>=<태그> ...`. 적지 않은 검출은 제거 |
+| `prepare.py` | 태그를 바꾼 검출 사본(`gsa_detections_ram_v2labeled`)을 만듭니다. 제외 keyframe(예: 위치 지정 전 사진)은 검출과 LiDAR 지도 점을 모두 뺍니다 |
+| `build.py` | 같은 태그끼리만 연결하고, 지정 태그는 관측 1회도 내보냅니다. `--trace`: 물체마다 어느 keyframe의 어느 검출로 만들어졌는지 기록 |
+| `finalize.py` | **단일 물품:** 여러 뷰의 마스크 아래쪽 시선을 받침면(책상 면 또는 바닥)과 교차해 위치를 정하고, 그 근처에서 여러 뷰가 동의한 LiDAR 점을 씁니다. LiDAR 점이 없으면 위치만 정하고 크기는 미측정(`points_source: views_only`)으로 표시합니다. **개수를 아는 가구(책상):** 책상 높이 LiDAR 단면에 사각형을 맞춥니다 |
 
-| 토픽 | 타입 | 내용 |
-|---|---|---|
-| `/athome/perception/objects` | `athome_interfaces/ObservedObjectArray` | 사진마다 발행(빈 배열 포함), stamp = 촬영 시각, map 좌표, object_id = 사전 지도와 연결되면 그 ID, 아니면 −1 |
-| `/athome/search/targets` | `athome_interfaces/SearchTargets` | 모든 query_names를 검출 질의에 추가, label은 query_name 그대로, 목표 검출은 신뢰도 0.4 이상 |
-| `/cg_d/objects_2d`, `/cg_d/annotated` | `semantic_geometry_msgs/SemanticObject2DArray`, `sensor_msgs/Image` | CG-D 2D 검출, 검출 화면 |
+같은 입력으로 다시 실행하면 room_baram 최종 데이터셋의 45개 물체가 모두 일치합니다(위치·크기 1 mm, CLIP cos 0.9999 이내).
 
-## 주요 설정
+---
 
-- CG-D: GroundingDINO GPU fp32, SAM ViT-H·CLIP fp16, RAM CPU (repo 설정 fp32와 검출·물체 결과 동일, GPU 최대 5.4 GB). `GSA_MODE=offload`는 fp32로 모델을 하나씩 GPU에 올림
-- live의 CLIP: 필터를 통과한 물체를 최대 16개씩 묶어 처리 (원본 방식과 cosine 0.9998 이상). 사전 지도 제작은 CG-D 원본 함수 그대로
-- 어휘 v2: 사진마다 RAM 태그 − `vocab/blocklist.txt` + `vocab/household.txt`, box/text threshold 0.2, 검출 신뢰도 0.25
-- fusion: 연결 점수 1.1, voxel 5 cm, 관측별 DBSCAN 0.15 m, 상자 전 튀는 점 제거, 같은 물체 재병합 cos 0.9
-- 실제 로봇 데이터만 2D 마스크 경계 3 px 축소 (`robot.yaml`, 빌더의 robot source)
+## 6. 실제로 만든 데이터셋과 결과
+
+### 6.1 시뮬레이션 데이터셋 v0.8 (39개 장면)
+
+| 소스 | 장면 | keyframe | 물체 | 특징 |
+|---|---|---|---|---|
+| Replica (NICE-SLAM 배포판) | 8 | 2,712 | 329 | 방 1개, mesh 렌더링 |
+| Replica 전체판 | 10 | 525 | 562 | 여러 방, semantic mesh GT |
+| ProcTHOR-10k | 20 집 | 1,194 | 1,118 | 여러 방, 작은 물체 많음 |
+| Gazebo (AWS small house) | 1 | 108 | 106 | 실제 ROS 경로 (Mid-360 plugin → FAST-LIO → TF) |
+| **합계** | **39** | **4,539** | **2,115** | |
+
+로봇 rig 조건(카메라 높이 0.77 m, Mid-360 0.445 m, 실제 calibration 값)으로 재현했습니다.
+
+**GT 평가** (GT 중심과 물체 상자 중심의 XY 거리 0.6 m 이내를 매칭으로 봄, 동의어 허용)
+
+| 소스 | 기하 정밀도 | 의미 정밀도* | 기하 재현율 | 의미 재현율 | 작은 물체(< 0.3 m) 의미 재현율 |
+|---|---|---|---|---|---|
+| Replica 전체판 | 0.94 | 0.48 | 0.81 | 0.30 | 0.31 |
+| ProcTHOR | 0.83 | 0.60 | 0.77 | 0.37 | 0.12 |
+| Gazebo | 0.68 | 0.43 | 0.86 | 0.55 | – |
+
+\* 문·창문·커튼 태그를 뺀 값입니다. 기하는 안정적이고, 의미 재현율을 낮추는 주원인은 CG-D 검출 단계입니다(ProcTHOR: 큰 물체 79개 보임 → 67 검출 → 65 기하 확보).
+
+**연결 기준값 비교** (ProcTHOR 20 / Replica 전체판 10)
+
+| 기준값 | 의미 재현율 | 같은 태그 중복 (0.3 m 안) | 판단 |
+|---|---|---|---|
+| 1.0 | 0.387 / 0.300 | 7 / 13 | 과병합 증가 |
+| **1.1** | **0.376 / 0.305** | **9 / 15** | 채택 |
+| 1.2 | 0.364 / 0.300 | 11 / 16 | |
+| 1.4 | 0.338 / 0.271 | 23 / 29 | 쪼개짐 증가 |
+
+**어휘 비교** (ProcTHOR 2개 집)
+
+| 설정 | 의미 정밀도 | 의미 재현율 | 작은 물체 재현율 |
+|---|---|---|---|
+| 원본 (RAM 태그 누적) | 0.33 / 0.42 | 0.17 / 0.31 | 0.01 / 0.03 |
+| v1: 누적 끔 | 0.51 / 0.49 | 0.14 / 0.18 | 0.00 / 0.03 |
+| **v2: 누적 끔 + blocklist + household** | **0.52 / 0.56** | **0.19 / 0.31** | **0.01 / 0.10** |
+| v3: v2 + 누적 | 0.42 / 0.50 | 0.21 / 0.34 | 0.04 / 0.08 |
+
+**실제 ROS 경로 검증 (Gazebo):** 같은 bag에서 ROS 노드와 오프라인 빌더의 결과를 비교했습니다. 물체 97 / 106개 중 90쌍이 0.3 m 안에서 짝지어졌고(89쌍은 이름도 같음), 중심 거리 중앙값 0.000 m, CLIP cos 중앙값 1.000이었습니다. FAST-LIO 자세 오차는 중앙값 0.13 m입니다.
+
+### 6.2 실물 로봇 데이터셋
+
+| 녹화 | 장소 | 녹화 | keyframe | 처리 단계 | 최종 물체 |
+|---|---|---|---|---|---|
+| run5 (2026-10-28) | 412호 | 주행 | 47 | 관측 444 → 물체 66 | **38** |
+| run6 (11-03) | 406호 | 주행, 343 s | 51 | 검출 335 → 관측 273 → 물체 42 | **18** |
+| room_baram (11-05) | 4개 구역 방 | 주행, 452 s | 76 | 검출 686 → 라벨 확인 505 (keyframe 0 제외 495) → 관측 374 | **34** (태그 27종) |
+
+- 카메라 D435 컬러 1280×720(fx 903.47, 수평 시야 70.6°), depth 없음. 카메라–LiDAR 시각 차이는 최대 0.05~0.07 s입니다.
+- 바닥 높이: lab 지도 z −0.41 m, 그 밖의 지도는 base_link 높이 중앙값(406호 −0.36, room_baram −0.39)입니다.
+- **자동 결과의 이름 정확도 (run6, 사진으로 확인한 14개):** 맞음 9개(64 %). 틀린 경우는 도마 → `book`, 책상 일부 → `drawer`·`table`·`chair`, 화이트보드 → `computer monitor`였습니다.
+- **room_baram 라벨 확인 전후** (물품 27종 기준)
+
+  | | 자동 | 라벨 확인 후 |
+  |---|---|---|
+  | 물체 수 | 41 | 34 (책상 8 + 26종 각 1개) |
+  | 목록에 있는 이름 | 25 | 34 |
+  | 같은 물품 중복 (책상 제외) | 13 | 0 |
+  | 태그 종류 (27종 중) | 12 | 27 |
+
+  - 위치 출처: LiDAR 15개, LiDAR 단면 책상 8개, 사진 기반 추정 11개(크기 미측정). 사진 기반 위치는 뷰 간 차이가 0.14~0.23 m입니다.
+  - 그릇, 수저, 칫솔은 LiDAR 점이 0개였습니다. 0.445 m 높이의 LiDAR가 책상 위 작은 물체를 거의 맞히지 못하기 때문입니다.
+- 이 저장소 코드로 room_baram bag을 다시 추출하면 서버 결과와 같습니다(keyframe 76장 자세·LiDAR 동일, LiDAR 지도 682,986점).
+
+### 6.3 처리 시간과 메모리 (CG-D, 사진 1280×720 한 장, RTX 4060 Laptop 8 GB)
+
+| RAM (CPU) | Grounding DINO | SAM | CLIP | 합계 |
+|---|---|---|---|---|
+| 1.52 s | 0.33 s | 0.77 s | 0.66 s | 약 3.3 s |
+
+- GPU 메모리 최대 5.4 GB(RAM CPU, SAM·CLIP fp16). 원본 설정(전부 GPU fp32)은 8 GB에서 메모리가 부족했습니다.
+- 공유 GPU 서버(A100 MIG 조각)는 혼잡할 때 사진당 약 30 s까지 느려졌습니다(keyframe 76장 약 40분).
+
+### 6.4 (부록) 사전 지도 사진으로 측정한 검출 성능
+로봇이 멈춘 위치의 사진에서, 기준 물체가 보일 때 같은 이름으로 검출되는 비율입니다(신뢰도 0.25, 목표 이름 0.4).
+
+| 장소 | 목표 이름 없음 | 목표 이름 추가 | 비고 |
+|---|---|---|---|
+| 412호 | 0.55 | 0.52 | 1.5 m 안 0.84 |
+| 406호 | 0.75 | 0.67 | 1.5 m 안 0.88, 1.5~3 m 0.31 |
+| room_baram | 0.47 | 0.49 | 목표 27종. 사진 기반 위치 물품은 판정 오차가 섞임 |
+
+거리가 멀어지면 크게 떨어집니다. 놓친 물체는 같은 자리에서 다시 볼 때보다 다른 자리에서 볼 때 더 잘 검출되었습니다(재검출률: 같은 자리 0.07~0.13, 다른 자리 0.32~0.50).
+
+---
+
+## 7. 한계
+1. **의미 정확도:** 자동 결과의 이름 오류는 CG-D 검출 단계에서 생깁니다. 목록이 정해진 장소는 5절의 라벨 확인으로 보완했지만, 사람의 판단이 들어간 결과입니다.
+2. **작은 물체의 3D:** LiDAR 높이(0.445 m) 때문에 책상 위 작은 물체에는 점이 거의 없습니다. 카메라 depth를 함께 녹화하면(USB 3.0, `CAMERA=realsense`) 나아질 수 있습니다.
+3. **상자 크기:** LiDAR가 앞면 위주로 보기 때문에 짧은 변이 작게 나오고, 주변 점이 섞인 큰 상자도 남습니다(room_baram 의자 1.72 m).
+4. **위치 실측:** 실물 데이터셋의 물체 위치는 현장 실측과 비교하지 않았습니다(사진 투영으로만 확인).
+
+## 8. 구성
+
+```
+semantic_geometry_ws/
+  config/robot_calibration.yaml        카메라 extrinsic (T_cam_body)
+  src/semantic_geometry_fusion/        fusion 라이브러리: geometry.py, association.py, feature_fusion.py, scene_graph_export.py
+  tools/
+    sim_sources/                       robot_bag_extract.py (로봇 bag → keyframe), gazebo_extract.py, run_cgd_sources.sh
+    replica_rig/                       gsa_fast.py (CG-D 실행 wrapper), vocab/ (어휘 v2), Replica 렌더링·공용 상수
+    replica_feasibility/plyload.py
+    scene_graph_dataset/               build_dataset.py, objects.schema.json
+    label_correction/                  prepare.py, build.py, finalize.py, common.py, configs/ (room_baram 예시)
+robot/scripts, robot/config            녹화 스크립트, 카메라 노드, calibration, py_shim (위치추정 import 우회)
+server/                                GPU 서버 환경 설치, 가중치, prebuild_from_bag.sh
+third_party/                           CG-D patch 1건
+```
 
 ## License
-
 MIT (`LICENSE`). 외부 코드와 모델 가중치는 각 저장소의 라이선스를 따릅니다.

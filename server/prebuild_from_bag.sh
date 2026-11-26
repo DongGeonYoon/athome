@@ -4,7 +4,7 @@
 # Input : /data/athome/prebuild/robot_mapping/RUN/bag   (sent by the robot PC's premap_to_server.sh)
 # Output: .../RUN/offline/robot/sources/RUN/  keyframes (results/frame*.jpg, traj.txt, lidar/, depth if recorded) + CG-D
 #         .../RUN/offline/sg_VERSION/scenes/robot_RUN/objects.json (+ points/, occupancy/, metadata.json)
-#         delivery, same layout as the packages sent so far (search server picks it up, require4 6):
+#         delivery, same layout as the packages sent so far (the Scene Graph side reads it):
 #           /data/athome/scene_graphs/RUN/VERSION/
 #             scene_graph_dataset/  index.json, schema/, scenes/robot_RUN/ (objects.json, metadata.json, points/, ...)
 #             nav2_map/             occupancy grid of the map used (yaml + image) + SHA256SUMS
@@ -12,7 +12,7 @@
 #             manifest.json, README.md
 #           /data/athome/scene_graphs/RUN/RUN_VERSION.zip (+ .sha256) to send; RUN/latest -> newest VERSION
 #         VERSION = build time YYYYmmdd_HHMMSS; metadata.json occupancy.map_version.map_version and manifest map_version =
-#         "sha256:<16 hex>" of the Nav2 map (yaml + image), the search server's check.
+#         "sha256:<16 hex>" of the Nav2 map (yaml + image), checked by the map user.
 #         log: .../RUN/offline/prebuild.log
 # Steps (same code and settings as the robot PC's offline rebuild, run4 "offline5"):
 #   1 robot_bag_extract.py (ROS env): keyframes while still / slow (|v| <= 0.5 m/s, |w| <= 0.6 rad/s,
@@ -31,10 +31,6 @@ PCD=${PCD:-$(echo $MAP | sed 's/_structural\.yaml$/.pcd/')}
 FLOOR_Z=${FLOOR_Z:-$(case $MAP in */lab_map_20261005_174210_structural.yaml) echo -0.41;; esac)}
 [ -f $PCD ] || { echo "no PCD map: $PCD (set PCD=...)"; exit 1; }
 [ -d $R/bag ] || { echo "no bag: $R/bag"; exit 1; }
-# the GPU slice (9.5 GB) holds one CG-D at a time: live services must be stopped first
-if pgrep -f "tools/robot_live/[c]gd_server.py|tools/robot_live/[t]ag_check_server.py" >/dev/null; then
-  echo "GPU in use by cgd_server / tag_check_server: stop them first (start_cgd_server.sh: kill; start_tag_check_server.sh stop)"; exit 1
-fi
 mkdir -p $O; exec > >(tee -a $O/prebuild.log) 2>&1
 echo "[prebuild] $RUN $(date '+%F %T')"
 WST=$A/code/semantic_geometry_ws/tools

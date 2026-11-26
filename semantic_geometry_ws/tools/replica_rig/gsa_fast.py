@@ -153,8 +153,7 @@ def _read_list(env):
     return [l.strip() for l in open(path) if l.strip() and not l.startswith('#')] if path else []
 
 
-#   GSA_TARGET_CLASSES      search-target query names, comma separated (require3: all query_names of the current
-#                           /athome/search/targets), appended last like cgd_live_node.py does
+#   GSA_TARGET_CLASSES      extra query names, comma separated, appended last (e.g. the items to be searched for)
 _extra, _block = _read_list('GSA_EXTRA_CLASSES_FILE'), {t.lower() for t in _read_list('GSA_BLOCK_TAGS_FILE')}
 _targets = [t.strip() for t in os.environ.get('GSA_TARGET_CLASSES', '').split(',') if t.strip()]
 if _extra or _block or _targets:
@@ -166,7 +165,7 @@ if _extra or _block or _targets:
     gsa.process_tag_classes = process_tag_classes_vocab
     print(f'[gsa_fast] extra classes: {len(_extra)}, blocked tags: {len(_block)}, targets: {_targets}', flush=True)
 
-if __name__ == '__main__':          # importable by the live node (tools/robot_live/cgd_live_node.py)
+if __name__ == '__main__':
     gsa.main(gsa.get_parser().parse_args())
     if _peak:
         gb = lambda v: '/'.join(f'{x / 2**30:.2f}' for x in (v if isinstance(v, tuple) else (v,)))

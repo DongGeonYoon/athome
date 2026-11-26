@@ -8,7 +8,7 @@ camera:
     cx: 329.529296875
     cy: 240.36149597168
     distortion: [0, 0, 0, 0, 0]
-  color_1280x720:         # factory intrinsics (rs-enumerate-devices -c, 2026-10-11). Used for detection (require2: option A)
+  color_1280x720:         # factory intrinsics (rs-enumerate-devices -c, 2026-10-11). Used for detection
     fx: 903.468872070312  # horizontal FOV = 2*atan(1280 / (2*fx)) = 70.6 deg, vertical 43.5 deg
     fy: 903.384704589844
     cx: 654.2939453125

@@ -1,11 +1,11 @@
 """
 Real-robot pre-mapping rosbag -> common intermediate format (same layout as the simulation sources), so the
 offline Scene Graph features are built with exactly the same tools:
-  robot_bag_extract.py -> run_cgd_sources.sh -> build_dataset.py (or ros_replay.sh with the real node)
+  robot_bag_extract.py -> run_cgd_sources.sh -> build_dataset.py
 
 Needs in the bag: /tf (camera_init -> body), /tf_static or --map-to-cinit, /cloud_registered_body, colour image
 (sensor_msgs/Image or CompressedImage) + camera_info; optional aligned depth (16UC1 mm or 32FC1 m) and
-/obs_keyframe markers. The camera <- body extrinsic is taken from robot.yaml (calibration), not from TF, because
+/obs_keyframe markers. The camera <- body extrinsic is taken from config/robot_calibration.yaml, not from TF, because
 the robot does not publish a base_link -> camera TF.
 
 Keyframes: /obs_keyframe markers if recorded, otherwise automatic: the robot is nearly still (|v| < 0.15 m/s,
@@ -21,7 +21,7 @@ from sensor_msgs_py import point_cloud2
 from scipy.spatial.transform import Rotation as Rot
 from gazebo_extract import PoseSeries, read_bag, tf_mat, stamp
 
-ROBOT_YAML = os.path.expanduser('~/semantic_geometry_ws/install/semantic_geometry_fusion/share/semantic_geometry_fusion/config/robot.yaml')
+ROBOT_YAML = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../../config/robot_calibration.yaml')
 T_BODY_BASE_DEFAULT = np.eye(4); T_BODY_BASE_DEFAULT[:3, 3] = [-0.321, -0.023, -0.401]   # mppi_nav static TF
 
 
@@ -74,7 +74,8 @@ def main():
     ap.add_argument('--kf-gap', type=float, default=1.0, help='minimum seconds between keyframes')
     ap.add_argument('--ignore-markers', action='store_true', help='select keyframes automatically even if /obs_keyframe exists')
     args = ap.parse_args()
-    T_cam_body = np.array(yaml.safe_load(open(args.robot_yaml))['geometry_fusion_node']['ros__parameters']['T_cam_lidar']).reshape(4, 4)
+    args.robot_yaml = os.path.abspath(args.robot_yaml)
+    T_cam_body = np.array(yaml.safe_load(open(args.robot_yaml))['T_cam_body'], float).reshape(4, 4)
 
     # pass 1: poses, calibration, markers, cloud stamps (images and clouds are large: read them in pass 2)
     statics, body, mcin, kfs, info, cl_t = {}, PoseSeries(), PoseSeries(), [], None, []

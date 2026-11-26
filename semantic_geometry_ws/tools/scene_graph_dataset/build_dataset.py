@@ -49,13 +49,13 @@ COND = 'fastlio_body'
 FUSION = dict(obs_cluster_eps=0.15, dedup_iou=0.8, frame_one_to_one=False, growth_ratio=None, growth_margin=0.3,
               denoise_eps=0.20, depth_fallback=True, size_prior_slack=1.5,
               merge_fragments_cos=0.9,   # export re-merge, study: exp1/merge_sweep + real run2
-              # stray points before every bbox (require3 problem 1, run4 desk top 0.44 -> 0.33 m); None disables
+              # stray points before every bbox (run4: one stray point raised a desk top 0.44 -> 0.33 m); None disables
               outliers=dict(k=8, std_ratio=2.0, min_gap=0.08, min_points=20),
               # small objects on furniture: drop points below the support surface (search-server check, 2026-10-28).
               # Off: no effect on run4 (LiDAR below the desk never sees the surface under small objects); mask erosion
               # did the job there. --support-trim turns it on.
               support_trim=None,
-              # 2D mask edge erosion [px] before LiDAR points, per source. Real robot only (require4 2): run4 small
+              # 2D mask edge erosion [px] before LiDAR points, per source. Real robot only: run4 small
               # objects on desks 1/6 -> 5/6 "on" the desk; simulation (perfect camera-LiDAR alignment) got worse
               # (ProcTHOR objects -8 %). To be re-checked once camera depth is recorded.
               mask_erosion_px=dict(robot=3))
@@ -256,7 +256,7 @@ def load_nav2_map(yaml_path):
     sha = lambda f: hashlib.sha256(open(f, 'rb').read()).hexdigest()
     info = dict(source='nav2_map_server', yaml=os.path.basename(yaml_path), image=os.path.basename(img_path),
                 sha256={os.path.basename(yaml_path): sha(yaml_path), os.path.basename(img_path): sha(img_path)},
-                # search server's map check: "sha256:" + first 16 hex of sha256(yaml bytes + image bytes)
+                # map check of the Scene Graph side: "sha256:" + first 16 hex of sha256(yaml bytes + image bytes)
                 map_version='sha256:' + hashlib.sha256(open(yaml_path, 'rb').read() + open(img_path, 'rb').read()).hexdigest()[:16],
                 origin=[float(v) for v in m['origin']], size=[int(img.shape[1]), int(img.shape[0])],
                 note='same file as the robot map_server /map (copied unchanged next to map.yaml); '
@@ -502,7 +502,7 @@ def main():
     ap.add_argument('--merge-cos', type=float, default=None, help='export-time fragment merge CLIP cosine (0 = off)')
     ap.add_argument('--growth-ratio', type=float, default=None, help='association growth gate (0 = off)')
     ap.add_argument('--det-suffix', default=None, help='override the CG-D detection suffix of every source')
-    ap.add_argument('--no-outliers', action='store_true', help='skip stray-point removal (before require3, for comparison)')
+    ap.add_argument('--no-outliers', action='store_true', help='skip stray-point removal (older setting, for comparison)')
     ap.add_argument('--support-trim', action='store_true', help='trim small objects below furniture surfaces (off by default)')
     ap.add_argument('--mask-erosion', type=int, default=None, help='2D mask edge erosion [px] before LiDAR points')
     ap.add_argument('--out-name', default='scene_graph_dataset', help='output folder under --exp')

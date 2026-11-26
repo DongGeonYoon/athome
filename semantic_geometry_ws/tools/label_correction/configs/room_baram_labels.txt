@@ -1,0 +1,77 @@
+# keyframe: detection_id=tag ... (not listed = removed)
+0: 0=cup 1=pillow 2=toothbrush 4=blanket 5=desk 6=desk 7=desk 8=desk 10=clothes hanger 13=desk
+1: 0=pillow 1=cup 2=blanket 4=desk 6=desk 7=clothes hanger 9=desk 10=desk 12=desk
+2: 0=pillow 1=clothes hanger 2=blanket 4=desk 6=desk 7=desk 9=desk
+3: 0=pillow 1=clothes hanger 2=desk 3=blanket 5=desk
+4: 0=pillow 1=clothes hanger 2=desk 3=blanket
+5: 0=pillow 1=blanket 2=clothes hanger 3=desk 5=desk 10=desk
+6: 0=pillow 1=toothbrush 2=desk 3=cup 5=desk 6=blanket 8=desk 9=desk
+7: 0=desk 1=pillow 2=desk 3=desk 4=blanket
+8: 0=toothbrush 1=cup 2=desk 3=blanket 9=desk 10=desk 16=desk
+9: 0=toothbrush 1=cup 2=desk 3=blanket
+10: 0=toothbrush 2=cup 3=blanket 5=desk
+11: 0=microwave 1=desk
+12: 0=toothbrush 1=cup 2=blanket 5=desk 9=desk
+13: 0=cup 1=pillow 2=toothbrush 3=desk 5=blanket
+14: 0=pillow 1=cup 2=toothbrush 3=blanket 6=desk 7=desk
+15: 0=pillow 1=blanket 4=desk 7=desk
+16: 0=pillow 1=cup 3=blanket 5=desk 6=toothbrush 7=desk
+17: 0=pillow 1=cup 3=blanket 5=desk 6=toothbrush 10=desk
+18: 0=chair 5=monitor 6=box 7=desk 9=desk
+19: 0=chair 2=box 4=monitor 7=keyboard 8=desk 10=remote control 11=desk 12=stapler
+20: 0=chair 1=box 3=keyboard 7=monitor 10=stapler 12=remote control 13=desk 14=desk 16=desk 17=chair 18=desk
+21: 0=chair 1=box 2=keyboard 5=desk 6=monitor 7=desk 8=stapler 11=desk 12=desk
+22: 0=mouse 1=box 3=keyboard 4=desk 5=monitor 6=remote control 7=desk 8=stapler 11=desk 13=desk
+23: 0=mouse 1=box 2=keyboard 3=remote control 4=stapler 5=monitor 6=desk 7=desk 8=desk 10=desk
+24: 0=mouse 1=box 2=remote control 3=keyboard 4=monitor 5=desk 7=desk 11=stapler
+25: 0=keyboard 1=box 2=mouse 3=desk 4=remote control 6=monitor 10=desk 13=desk
+26: 0=mouse 1=keyboard 2=box 3=remote control 4=desk 7=desk 8=monitor
+27: 0=box 1=keyboard 2=remote control 3=desk 8=monitor 9=mouse 10=desk 16=stapler
+28: 0=keyboard 1=box 4=desk 7=mouse 8=monitor 10=stapler 12=stapler
+29: 0=mouse 1=keyboard 2=box 3=desk 4=remote control 6=stapler 8=monitor 10=desk
+30: 0=mouse 1=box 2=keyboard 4=remote control 6=monitor 7=desk 8=desk 14=desk 15=stapler
+31: 0=mouse 1=chair 2=box 3=keyboard 5=monitor 8=remote control 9=desk 10=desk 12=desk
+32: 0=mouse 1=chair 2=keyboard 3=desk 4=monitor 5=remote control 8=desk 9=box 10=chair
+33: 0=mouse 1=monitor 2=chair 4=remote control 5=desk 7=box 11=desk
+34: 0=chair 1=monitor 3=desk 4=desk 7=desk 8=remote control 9=mouse
+35: 0=box 1=chair 2=desk 3=monitor 5=keyboard 6=stapler
+36: 0=chair 1=desk 2=stapler 4=remote control 5=monitor 7=mouse 9=desk
+37: 0=air purifier 1=backpack 4=drawer 5=guitar 7=fan 12=headphone 15=desk
+38: 0=air purifier 1=backpack 2=guitar 4=drawer 7=desk 8=desk 10=headphone
+39: 0=air purifier 1=backpack 2=guitar 3=drawer 5=desk 9=headphone 13=fan
+40: 0=air purifier 1=backpack 2=guitar 3=drawer 5=desk 8=headphone 9=desk 12=fan
+41: 0=guitar 1=backpack 2=air purifier 4=drawer 7=desk 10=headphone
+42: 0=backpack 1=air purifier 2=desk 5=drawer 7=guitar 8=headphone
+43: 0=backpack 1=air purifier 2=desk 7=drawer 8=headphone
+44: 0=air purifier 1=backpack 3=desk 4=drawer 8=headphone
+45: 0=backpack 1=guitar 2=drawer 6=desk 7=desk 8=air purifier 9=headphone
+46: 0=fan 1=desk 2=guitar
+47: 0=vacuum cleaner 1=fan 2=desk 5=vacuum cleaner
+48: 0=fan 2=desk 7=vacuum cleaner 8=desk
+49: 0=fan 2=vacuum cleaner 4=desk 6=vacuum cleaner
+50: 0=guitar 2=vacuum cleaner 3=vacuum cleaner 6=desk 7=fan
+51: 0=guitar 1=vacuum cleaner 4=desk 6=vacuum cleaner 7=fan
+52: 0=vacuum cleaner 2=backpack 3=guitar 4=desk 8=desk 9=vacuum cleaner 10=fan 11=headphone
+53: 0=guitar 1=backpack 2=desk 4=drawer 5=headphone
+54: 0=guitar 1=backpack 2=drawer 3=desk 6=desk 7=headphone 9=desk
+55: 2=desk 4=microwave 6=desk
+56: 0=bottle 1=microwave 3=bowl 4=plate 6=refrigerator 7=spoon 8=ketchup 9=desk 12=desk
+57: 0=microwave 2=ketchup 3=bottle 4=desk 7=desk
+58: 0=microwave 1=desk 2=ketchup
+59: 0=microwave 1=bowl 2=bottle 3=ketchup 4=desk 5=desk 6=spoon 7=bottle 10=desk 12=desk 14=bottle
+60: 2=bottle 3=desk
+61: 0=plate 1=refrigerator 2=bowl 3=bottle 4=desk 7=desk 8=spoon 10=desk
+62: 0=plate 1=bottle 2=refrigerator 3=bowl 4=ketchup 5=desk 8=spoon 9=desk 12=desk
+63: 0=refrigerator 1=bowl 2=bottle 3=plate 4=ketchup 7=desk 8=desk 9=spoon
+64: 0=refrigerator 1=bowl 2=plate 3=bottle 4=desk 5=ketchup 6=desk 7=spoon
+65: 0=refrigerator 1=plate 2=bowl 3=bottle 4=desk 5=ketchup 6=desk 7=spoon
+66: 0=bowl 1=plate 2=bottle 3=microwave 4=ketchup 5=desk 6=spoon 7=desk 8=desk 11=desk 12=desk
+67: 0=microwave 1=bottle 3=desk 4=desk 5=ketchup
+68: 0=plate 1=bowl 4=refrigerator 5=desk
+69: 0=refrigerator 1=plate 2=desk 3=bowl 5=desk 9=spoon
+70: 0=refrigerator 1=bowl 3=bottle 4=desk 5=ketchup 6=plate 10=desk
+71: 0=refrigerator 1=bowl 3=desk 4=plate 9=spoon 10=desk
+72: 0=refrigerator 1=bowl 3=plate 5=desk 10=spoon 11=desk
+73: 0=refrigerator 1=bowl 2=bottle 3=plate 5=ketchup 6=desk 9=desk 10=spoon 12=desk
+74: 0=refrigerator 1=bowl 2=bottle 3=plate 4=ketchup 6=desk 9=desk 10=spoon 12=desk
+75: 0=refrigerator 1=bowl 2=bottle 3=plate 4=ketchup 5=desk 10=desk 11=spoon 13=desk

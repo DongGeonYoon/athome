@@ -1,0 +1,10 @@
+# Camera extrinsic of the real robot (D435 colour, Livox Mid-360 + FAST-LIO). robot_bag_extract.py reads T_cam_body.
+# Input points are the FAST-LIO body cloud (/cloud_registered_body), so the extrinsic is camera <- body:
+#   T_cam_body = T_cam_lidar (calib.json) * inv(T_body_lidar), T_body_lidar = FAST-LIO mid360 extrinsic_T [-0.011, -0.02329, 0.04412], R = I.
+# Validated end to end on a Gazebo replay of the same chain.
+T_cam_body: [
+  -0.0019986, -0.9999089, -0.0133510, 0.0100374,
+   0.0034152,  0.0133441, -0.9999051, 0.3686100,
+   0.9999922, -0.0020440,  0.0033882, 0.0291520,
+   0.0,        0.0,        0.0,       1.0
+]
