@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Pre-mapping recording on the robot PC (sensors only; the Scene Graph is built offline from the bag, premap_to_server.sh).
+# Pre-mapping recording on the robot PC (sensors only; the Scene Graph is built offline from the bag, prebuild.sh).
 # Nothing here commands the robot: drive it by hand, slowly, and stop often so every place is seen from standstill.
 #   bash record_premap.sh [NAME]        -> ~/real/results/<NAME or premap_YYYYmmdd_HHMMSS>/bag
 #   bash record_premap.sh stop          close the bag (SIGINT), stop what this script started
 #   MAP_PCD=<pcd> MAP_YAML=<nav2 yaml> bash record_premap.sh NAME   localize on another map (default lab map);
-#                                       written to NAME/map.env, premap_to_server.sh builds with the same map
+#                                       written to NAME/map.env, prebuild.sh builds with the same map
 #   CAMERA=realsense bash record_premap.sh NAME   USB 3.0: official driver, colour 1280x720 @ 30 fps + depth aligned to colour
 #                                       @ 6 fps, recorded with the bag. Check first that colour camera_info K[0] is 903.47 (HFOV 70.6 deg)
 # 1 localization (Livox + FAST_LIO_LOCALIZATION2 on the lab map or MAP_PCD / MAP_YAML), unless running

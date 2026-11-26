@@ -12,7 +12,7 @@ ACC=""; [ "${ACCUMU:-0}" = 1 ] && ACC="--accumu_classes"
 export GSA_PATH=$HOME/conceptgraph_ws/Grounded-Segment-Anything
 export PYTHONHASHSEED=0
 export PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:256
-PY=$HOME/miniforge3/envs/conceptgraph/bin/python
+PY=${CGD_PYTHON:-$HOME/miniforge3/envs/conceptgraph/bin/python}
 RUNNER=$HOME/semantic_geometry_ws/tools/replica_rig/gsa_fast.py
 for sd in "$ROOT"/*/; do
   s=$(basename "$sd")

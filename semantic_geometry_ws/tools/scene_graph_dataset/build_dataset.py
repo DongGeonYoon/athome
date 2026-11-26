@@ -51,7 +51,7 @@ FUSION = dict(obs_cluster_eps=0.15, dedup_iou=0.8, frame_one_to_one=False, growt
               merge_fragments_cos=0.9,   # export re-merge, study: exp1/merge_sweep + real run2
               # stray points before every bbox (run4: one stray point raised a desk top 0.44 -> 0.33 m); None disables
               outliers=dict(k=8, std_ratio=2.0, min_gap=0.08, min_points=20),
-              # small objects on furniture: drop points below the support surface (search-server check, 2026-10-28).
+              # small objects on furniture: drop points below the support surface (checked 2026-10-28).
               # Off: no effect on run4 (LiDAR below the desk never sees the surface under small objects); mask erosion
               # did the job there. --support-trim turns it on.
               support_trim=None,

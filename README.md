@@ -17,10 +17,10 @@ AtHOME 실내 물체 탐색 로봇의 **사전 구축(pre-mapping) 인지 모듈
 
 # Updates
 
-* **2026-11-26:** 저장소를 사전 구축 전용으로 정리했습니다. 라벨 확인 도구(`tools/label_correction`)를 추가했고, 녹화가 위치 지정 뒤에만 시작되도록 고쳤습니다. 실시간 탐색 코드까지 포함한 이전 판은 태그 [`live-search-20261105`](https://github.com/DongGeonYoon/athome/tree/live-search-20261105)에 있습니다.
+* **2026-11-26:** GPU PC 한 대에서 bag부터 전달 묶음까지 처리하는 `prebuild.sh`를 추가했고, 저장소를 사전 구축 전용으로 정리했습니다. 라벨 확인 도구(`tools/label_correction`)를 추가했고, 녹화가 위치 지정 뒤에만 시작되도록 고쳤습니다. 실시간 탐색 코드까지 포함한 이전 판은 태그 [`live-search-20261105`](https://github.com/DongGeonYoon/athome/tree/live-search-20261105)에 있습니다.
 * **2026-11-05:** room_baram(4개 구역 방) 데이터셋. 라벨 확인으로 물품 27종을 모두 담았습니다(물체 41 → 34개, 같은 물품 중복 13 → 0).
 * **2026-11-03:** 406호 데이터셋(run6), 물체 18개
-* **2026-10-28:** 412호 데이터셋(run5), 물체 38개. GPU 서버 처리 경로(`premap_to_server.sh`)와 Nav2 지도·PCD 지도 동봉
+* **2026-10-28:** 412호 데이터셋(run5), 물체 38개. Nav2 지도와 PCD 지도를 묶음에 동봉
 * **2026-10-11:** 시뮬레이션 데이터셋 v0.8 (Replica, ProcTHOR, Gazebo 39개 장면, 물체 2,115개)
 
 ---
@@ -32,12 +32,12 @@ AtHOME 실내 물체 탐색 로봇의 **사전 구축(pre-mapping) 인지 모듈
 ```
 [로봇 PC] robot/scripts/record_premap.sh
    위치추정(FAST_LIO_LOCALIZATION2, PCD 지도) + D435 RGB 1280×720 + Mid-360 → rosbag
-        │ premap_to_server.sh (GPU 서버) 또는 GPU PC에서 직접
         ▼
-[GPU] server/prebuild_from_bag.sh
+[GPU PC] robot/scripts/prebuild.sh
    1 robot_bag_extract.py   keyframe 선택(저속·정지 구간, 0.3 m / 5° / 0.5 s), keyframe별 LiDAR(0.5 s 누적), map 자세
    2 run_cgd_sources.sh     CG-D (gsa_fast.py가 CG-D 원본 코드를 그대로 실행, 어휘 v2)
    3 build_dataset.py       2D 검출 → LiDAR 3D 관측 → 물체 연결·융합 → objects.json (+ Nav2 지도를 occupancy로)
+   4 전달 묶음               scene_graph_dataset/ + nav2_map/ + pcd_map/ + manifest.json + zip/sha256
         │ (선택) 물품 목록을 아는 장소
         ▼
 [GPU/PC] tools/label_correction   prepare.py → build.py → finalize.py
@@ -103,11 +103,11 @@ ln -s ~/athome/robot/config ~/real/config
 ```
 
 ### 1. Python 환경 (`conceptgraph`)
-Python 3.10, PyTorch 2.0.1 + CUDA 11.8에서 시험했습니다. 전체 순서는 `server/setup_server_env.sh`에 있습니다.
+Python 3.10, PyTorch 2.0.1 + CUDA 11.8에서 시험했습니다.
 ```bash
 conda create -n conceptgraph python=3.10.13 && conda activate conceptgraph
 pip install torch==2.0.1 torchvision==0.15.2 --index-url https://download.pytorch.org/whl/cu118
-pip install -r ~/athome/server/requirements_server.txt
+pip install -r ~/athome/setup/requirements.txt
 ```
 
 ### 2. ConceptGraphs와 Grounded-SAM 설치
@@ -133,14 +133,14 @@ export GSA_PATH=$G
 
 ### 3. 가중치
 ```bash
-bash ~/athome/server/download_weights.sh    # GroundingDINO SwinT-OGC, SAM ViT-H, RAM Swin-L, MobileSAM, CLIP ViT-H-14 (해시: weights.sha256)
+GSA_PATH=~/conceptgraph_ws/Grounded-Segment-Anything bash ~/athome/setup/download_weights.sh
+# GroundingDINO SwinT-OGC, SAM ViT-H, RAM Swin-L, MobileSAM, CLIP ViT-H-14 (해시: setup/weights.sha256)
 ```
 
 ### 4. ROS 2 Humble과 위치추정
-- **ROS 2 Humble:** bag 추출에만 필요하고, 이 저장소에는 빌드할 ROS 패키지가 없습니다. Ubuntu 20.04 서버는 conda RoboStack을 씁니다(`server/ros_env.sh`). ROS 단계와 CG-D 단계는 **다른 셸**에서 실행합니다(두 환경의 OpenCV 충돌).
+- **ROS 2 Humble:** bag 추출에만 필요하고, 이 저장소에는 빌드할 ROS 패키지가 없습니다. ROS 단계와 CG-D 단계는 **다른 셸**에서 실행합니다(두 환경의 OpenCV 충돌). `prebuild.sh`가 알아서 나눠 실행합니다.
 - **팀 위치추정 워크스페이스 (이 저장소에 없음):** `~/fast_lio_ws`의 `mppi_nav/slam_costmap_bringup.launch.py`(Livox, FAST_LIO_LOCALIZATION2, map_server, RViz)
 - **카메라 extrinsic:** `semantic_geometry_ws/config/robot_calibration.yaml` (`T_cam_body`)
-- **GPU 서버를 쓸 때:** `robot/config/gpu_server.env.example`을 `gpu_server.env`로 복사해 채웁니다.
 
 ---
 
@@ -155,12 +155,13 @@ bash robot/scripts/record_premap.sh stop
 ```
 
 ### 2. 데이터셋 만들기
-**GPU 서버:**
+**한 번에 (권장):**
 ```bash
-bash robot/scripts/premap_to_server.sh premap_A --wait     # → ~/real/results/premap_A/scene_graph/<버전>/ + zip
+bash robot/scripts/prebuild.sh premap_A        # 녹화 때 쓴 지도(map.env)로 처리
+#  → ~/real/results/premap_A/scene_graph/<버전>/ + premap_A_<버전>.zip(.sha256)   (8 GB GPU, keyframe 76장 약 6분)
 ```
 
-**GPU PC에서 직접:**
+**단계별로:**
 ```bash
 T=~/semantic_geometry_ws/tools; EXP=~/exp_premap; PY=~/miniforge3/envs/conceptgraph/bin/python
 # (ROS 셸) bag → keyframe
@@ -311,8 +312,9 @@ semantic_geometry_ws/
     replica_feasibility/plyload.py
     scene_graph_dataset/               build_dataset.py, objects.schema.json
     label_correction/                  prepare.py, build.py, finalize.py, common.py, configs/
-robot/scripts, robot/config            녹화 스크립트, V4L2 카메라 노드, calibration, py_shim
-server/                                GPU 서버 환경, 가중치, prebuild_from_bag.sh
+robot/scripts                          record_premap.sh (녹화), prebuild.sh (bag → 데이터셋 묶음), 위치추정·카메라 실행, V4L2 카메라 노드
+robot/config                           calibration, py_shim (위치추정 import 우회)
+setup/                                 requirements.txt, download_weights.sh, weights.sha256
 third_party/                           CG-D patch 1건
 assets/                                README 그림
 ```
