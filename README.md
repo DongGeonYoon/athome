@@ -97,10 +97,9 @@ ConceptGraphs 방식의 연결 점수(`φ_sem + φ_geo`)에 맞는 기준값을 
 # Setup
 
 ### 0. 저장소 배치
-스크립트는 아래 경로를 기준으로 동작합니다.
+녹화 스크립트는 `~/real/scripts`, `~/real/config`, 결과는 `~/real/results`를 기준으로 동작합니다.
 ```bash
 git clone https://github.com/DongGeonYoon/athome.git ~/athome
-ln -s ~/athome/semantic_geometry_ws ~/semantic_geometry_ws
 mkdir -p ~/real/results
 ln -s ~/athome/robot/scripts ~/real/scripts
 ln -s ~/athome/robot/config ~/real/config
@@ -149,7 +148,7 @@ GSA_PATH=~/conceptgraph_ws/Grounded-Segment-Anything bash ~/athome/setup/downloa
 ```
 
 ### 4. ROS 2 Humble과 위치추정
-- **ROS 2 Humble:** bag 추출에만 필요하고, 이 저장소에는 빌드할 ROS 패키지가 없습니다. ROS 단계와 CG-D 단계는 **다른 셸**에서 실행합니다(두 환경의 OpenCV 충돌). `prebuild.sh`가 알아서 나눠 실행합니다.
+- **ROS 2 Humble:** 녹화와 bag 추출에 필요합니다. 이 저장소에는 빌드할 ROS 패키지가 없습니다.
 - **팀 위치추정 워크스페이스 (이 저장소에 없음):** `~/fast_lio_ws`의 `mppi_nav/slam_costmap_bringup.launch.py`(Livox, FAST_LIO_LOCALIZATION2, map_server, RViz)
 - **카메라 extrinsic:** `semantic_geometry_ws/config/robot_calibration.yaml` (`T_cam_body`)
 
@@ -166,24 +165,11 @@ bash robot/scripts/record_premap.sh stop
 ```
 
 ### 2. 데이터셋 만들기
-**한 번에 (권장):**
 ```bash
 bash robot/scripts/prebuild.sh premap_A        # 녹화 때 쓴 지도(map.env)로 처리
 #  → ~/real/results/premap_A/scene_graph/<버전>/ + premap_A_<버전>.zip(.sha256)   (8 GB GPU, keyframe 76장 약 6분)
 ```
-
-**단계별로:**
-```bash
-T=~/semantic_geometry_ws/tools; EXP=~/exp_premap; PY=~/miniforge3/envs/conceptgraph/bin/python
-# (ROS 셸) bag → keyframe
-source /opt/ros/humble/setup.bash
-python3 $T/sim_sources/robot_bag_extract.py ~/real/results/premap_A/bag $EXP/robot/sources/premap_A --name premap_A \
-  --max-speed 0.5 --max-turn 0.6 --kf-dist 0.3 --kf-yaw 5 --kf-gap 0.5
-# (새 셸) CG-D → 데이터셋
-bash $T/sim_sources/run_cgd_sources.sh $EXP/robot/sources v2
-(cd $T/scene_graph_dataset && $PY build_dataset.py --exp $EXP --sources robot --out-name sg --occupancy-map <nav2 yaml>)
-#  → $EXP/sg/scenes/robot_premap_A/objects.json   (8 GB GPU, keyframe 47장 약 4분)
-```
+`prebuild.sh`는 bag 추출(`robot_bag_extract.py`, ROS 환경), CG-D(`run_cgd_sources.sh`), 데이터셋 빌드(`build_dataset.py`)를 차례로 실행하고 묶음을 만듭니다. ROS와 conceptgraph 환경은 OpenCV가 충돌하므로 셸을 나눠 실행합니다.
 
 | 결과 | 내용 |
 |---|---|
@@ -199,6 +185,7 @@ bash $T/sim_sources/run_cgd_sources.sh $EXP/robot/sources v2
 - **Gazebo:** bag 추출부터 할 수 있습니다(`gazebo_extract.py`, Livox 메시지가 있는 `fast_lio_ws` 필요).
 - **ProcTHOR, Replica 전체판:** 수집해 둔 원천 데이터가 필요합니다(수집 도구는 태그 `full-20261028`).
 ```bash
+T=~/athome/semantic_geometry_ws/tools; PY=~/miniforge3/envs/conceptgraph/bin/python
 (cd $T/replica_rig && $PY render_rig.py --scene room0 --out ~/exp_sim)
 bash $T/sim_sources/run_cgd_sources.sh ~/exp_sim/replica_rig v2
 (cd $T/scene_graph_dataset && $PY build_dataset.py --exp ~/exp_sim --sources replica --out-name sg)
@@ -208,7 +195,8 @@ bash $T/sim_sources/run_cgd_sources.sh ~/exp_sim/replica_rig v2
 방에 놓인 물품 목록을 아는 경우, 사람이 검출 단위로 태그를 정하고 나머지를 다시 만듭니다. foundation model과 빌더 코드는 그대로이고, 결정과 설정 파일만 방마다 다릅니다. 예시: `tools/label_correction/configs/room_baram_labels.txt`, `room_baram.yaml`
 
 ```bash
-L=$T/label_correction; SRC=$EXP/robot/sources/<이름>
+L=~/athome/semantic_geometry_ws/tools/label_correction; PY=~/miniforge3/envs/conceptgraph/bin/python
+EXP=~/real/results/<이름>/offline; SRC=$EXP/robot/sources/<이름>        # prebuild.sh가 만든 폴더
 $PY $L/prepare.py $SRC labels.txt --exclude-keyframes 0
 $PY $L/build.py --exp $EXP --occupancy-map <nav2 yaml> --single-view-tags cup,headphone,plate --trace trace.json
 $PY $L/finalize.py room.yaml $SRC labels.txt $EXP/sg_labeled out_dataset --trace trace.json --keyframe-json kf/ --figures fig/
@@ -291,17 +279,6 @@ D435 컬러 1280×720(fx 903.47, 수평 시야 70.6°, depth 없음). 카메라�
 | RAM (CPU) | Grounding DINO | SAM | CLIP | 합계 | GPU 메모리 최대 |
 |---|---|---|---|---|---|
 | 1.52 s | 0.33 s | 0.77 s | 0.66 s | 약 3.3 s | 5.4 GB |
-
-### (부록) 사전 지도 사진에서의 검출 성능
-멈춘 위치의 사진에서 기준 물체가 같은 이름으로 검출되는 비율입니다(신뢰도 0.25, 목표 이름 0.4).
-
-| 장소 | 목표 이름 없음 | 목표 이름 추가 | 거리별 |
-|---|---|---|---|
-| 412호 | 0.55 | 0.52 | 1.5 m 안 0.84 |
-| 406호 | 0.75 | 0.67 | 1.5 m 안 0.88, 1.5~3 m 0.31 |
-| room_baram | 0.47 | 0.49 (목표 27종) | 사진 기반 위치 물품은 판정 오차 포함 |
-
-놓친 물체는 같은 자리에서 다시 볼 때(재검출 0.07~0.13)보다 다른 자리에서 볼 때(0.32~0.50) 더 잘 검출되었습니다.
 
 ### 한계
 1. **의미 정확도:** 자동 결과의 이름 오류는 CG-D 검출 단계에서 생깁니다. 라벨 확인으로 보완한 결과에는 사람의 판단이 들어갑니다.
